@@ -55,7 +55,7 @@ pub use super::{
 pub use super::{
     bindings::{
         clear_lua_callback_errors, has_lua_callback_errors, lua_callback_errors,
-        new_pattern_from_file, new_pattern_from_string,
+        new_pattern_from_file, new_pattern_from_string, pattern_script_file_extensions,
     },
     emitter::{scripted::ScriptedEmitter, scripted_cycle::ScriptedCycleEmitter},
     gate::scripted::ScriptedGate,

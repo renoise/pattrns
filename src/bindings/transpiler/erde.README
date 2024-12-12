@@ -1,0 +1,7 @@
+The erde.lua file is a single file version of [erde](https://github.com/erde-lang/erde/tree/master/erde) 1.0.0-1.
+
+The file was merged via [luacc](https://github.com/mihacooper/luacc):
+
+```
+lua luacc.lua erde.init erde.lib erde.config erde.compile erde.constants erde.init erde.stdlib erde.tokenize erde.utils -o erde.lua -i /PATH_TO/erde-1.0.0-1
+```

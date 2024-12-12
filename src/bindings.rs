@@ -40,6 +40,7 @@ mod pattern;
 mod scale;
 mod sequence;
 mod timeout;
+mod transpiler;
 mod unwrap;
 
 // public re-exports
@@ -50,6 +51,7 @@ pub use callback::{
 // internal re-exports
 pub(crate) use callback::{ContextPlaybackState, LuaCallback};
 pub(crate) use timeout::LuaTimeoutHook;
+pub(crate) use transpiler::{is_transpilable_file, transpile};
 pub(crate) use unwrap::{gate_trigger_from_value, note_events_from_value, pulse_from_value};
 
 // ---------------------------------------------------------------------------------------------
@@ -102,7 +104,16 @@ pub(crate) fn new_engine() -> LuaResult<(Lua, LuaTimeoutHook)> {
 
 // -------------------------------------------------------------------------------------------------
 
-/// Evaluate a lua script file which creates and returns a pattern.
+/// Retuns all lua or lua transpilable file extensions that are supported.
+pub fn pattern_script_file_extensions() -> Vec<&'static str> {
+    let mut extensions = vec!["lua"];
+    extensions.append(&mut transpiler::transpilable_file_extensions());
+    extensions
+}
+
+// -------------------------------------------------------------------------------------------------
+
+/// Evaluate a lua script file which creates and returns a rhythm.
 ///
 /// ### Errors
 /// Will return `Err` if `file_name` does not exist, failed to load or the lua file at the given
@@ -112,6 +123,7 @@ pub fn new_pattern_from_file<P: AsRef<Path>>(
     instrument: Option<InstrumentId>,
     file_path: P,
 ) -> Result<Rc<RefCell<dyn Pattern>>, Box<dyn std::error::Error>> {
+    let file_path = file_path.as_ref();
     // create a new engine and register bindings
     let (mut lua, mut timeout_hook) =
         new_engine().map_err(Into::<Box<dyn std::error::Error>>::into)?;
@@ -119,7 +131,11 @@ pub fn new_pattern_from_file<P: AsRef<Path>>(
     // restart the timeout hook
     timeout_hook.reset();
     // compile and evaluate script
-    let chunk = lua.load(file_path.as_ref());
+    let chunk = if is_transpilable_file(file_path) {
+        lua.load(transpile(file_path)?)
+    } else {
+        lua.load(file_path)
+    };
     let result = chunk.eval::<LuaValue>()?;
     // convert result
     pattern_from_userdata(&lua, &timeout_hook, &result, &time_base, instrument).map_err(Into::into)
