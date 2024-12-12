@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     rc::Rc,
@@ -45,26 +46,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // fetch contents from demo dir
     log::info!("Searching for wav/script files in path '{DEMO_PATH}'...");
+    let mut entry_stems = HashSet::<String>::new();
+    let audio_extensions = ["wav", "flac", "mp3"];
+    let script_extensions = pattern_script_file_extensions();
+    for dir_entry in fs::read_dir(DEMO_PATH)?.flatten() {
+        if let Some(extension) = dir_entry.path().extension() {
+            let extension = extension.to_string_lossy().to_ascii_lowercase();
+            if script_extensions.contains(&extension.as_str())
+                || audio_extensions.contains(&extension.as_str())
+            {
+                if let Some(stem) = dir_entry.path().file_stem() {
+                    entry_stems.insert(stem.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    // load samples and get paths to the pattern scripts
     let sample_pool = Arc::new(SamplePool::new());
     struct PatternEntry {
         instrument_id: InstrumentId,
         script_path: PathBuf,
     }
     let mut entries = vec![];
-    for dir_entry in fs::read_dir(DEMO_PATH)?.flatten() {
-        let path = dir_entry.path();
-        if let Some(extension) = path.extension().map(|e| e.to_string_lossy()) {
-            // collect all audio file's that have a lua file next to it
-            if matches!(extension.as_bytes(), b"mp3" | b"wav" | b"flac") {
-                let script_path = path.clone().with_extension("lua");
-                if script_path.exists() {
-                    let instrument_id = sample_pool.load_sample(path)?;
-                    entries.push(PatternEntry {
-                        instrument_id,
-                        script_path,
-                    });
-                }
-            }
+    for stem in entry_stems.iter() {
+        let base_path = PathBuf::new().join(DEMO_PATH).join(stem);
+        let audio_files = audio_extensions
+            .iter()
+            .map(|e| base_path.with_extension(e))
+            .filter(|f| f.exists())
+            .collect::<Vec<_>>();
+        let script_files = script_extensions
+            .iter()
+            .map(|e| base_path.with_extension(e))
+            .filter(|f| f.exists())
+            .collect::<Vec<_>>();
+        if let (Some(audio_path), Some(script_path)) =
+            (audio_files.first().cloned(), script_files.first().cloned())
+        {
+            log::info!("Found file/script: '{}'...", stem);
+            let instrument_id = sample_pool.load_sample(audio_path)?;
+            entries.push(PatternEntry {
+                instrument_id,
+                script_path,
+            });
+        } else if !audio_files.is_empty() || !script_files.is_empty() {
+            log::warn!("Ignoring file/script: '{}'...", stem);
         }
     }
 
