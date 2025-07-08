@@ -20,50 +20,28 @@ const defaultScriptContent = `--
 -- Use 'CTRL+SHIFT+SPACE' to start/stop playing.
 --
 
-local notes = { "c4", "e4", "g4", "a4", "e4", "a3" }
+local note_patterns = {
+  { "c4", "d#4", "f4", "c5", "d#5", "f5" },
+  { "d#5", "g5", "d#5", "c6", "g#4", "c5" }
+}
 
 return pattern {
   unit = "1/16",
   parameter = {
-    -- template parameter definition
-    parameter.enum("direction", "up", { "up", "down", "up&down", "random" }, 
-      "Direction", "The note arp direction"),
-    parameter.integer("mod_length", 24, { 1, 256 }, 
-      "ModLength", "Modulation length in time units (1/16)"),
+    parameter.enum("direction", "up", { "up", "down", "random" }, "Direction"),
+    parameter.integer("mod_length", 24, { 1, 256 }, "ModLength"),
   },
-  pulse = { 
-    -- pulse values are used as accent here
-    1.0, 0.6, 1.0, 0.8, 1.0 
-  },
+  pulse = { 1.0, 0.5, 0.8, 0.6, 0.4 },
   event = function(context)
-    -- fetch actual parameter values
-    local direction, mod_length = 
-      context.parameter.direction, context.parameter.mod_length
-    -- get arp direction
-    local sign 
-    if direction == "up" then
-      sign = 1
-    elseif direction == "down" then
-      sign = -1
-    elseif direction == "up&down" then
-      sign = math.floor(context.step / #notes) % 2 == 0 and 1 or -1
-    else -- random
-      sign = math.random() > 0.5 and 1 or -1
-    end
-    -- cycle through notes with the current direction
-    local note_step = math.imod(sign * context.step, #notes)
-    -- create a volume swell using cosine wave
-    local volume_mod = math.cos(context.step / mod_length * math.pi)
-    -- add stereo movement with sine wave panning
-    local panning_mod = math.sin(context.step / mod_length / 3 * math.pi)
-    -- set the instrument (change to 0 for bass sample, nil plays the selected one)
-    local instrument = nil
-    -- return a final note from the computed note properties
+    local step_signs = { up = 1, down = -1, random = math.random() > 0.5 and 1 or -1 }
+    local notes = note_patterns[math.imod(math.floor((context.step - 1) / 128), #note_patterns)]
+    local step = math.imod(step_signs[context.parameter.direction] * context.step, #notes)
+    local vmod = math.cos(context.step / context.parameter.mod_length * math.pi)
+    local pmod = math.sin(context.step / context.parameter.mod_length / 3 * math.pi)
     return {
-        key = notes[note_step],
-        volume = context.pulse_value * (0.7 + 0.3 * volume_mod),
-        panning = 0.6 * panning_mod,
-        instrument = instrument
+        key = notes[step], 
+        volume = context.pulse_value * (0.7 + 0.3 * vmod),
+        panning = 0.6 * pmod
     }
   end
 }
