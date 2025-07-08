@@ -2,7 +2,7 @@
 
 ... to the pattrns scripting guide! **pattrns** is an experimental imperative music sequence generator engine that lets you create musical patterns programmatically using Lua scripts for algorithmic or [live music coding](https://github.com/pjagielski/awesome-live-coding-music).
 
-This guide focuses on the Lua scripting API. For Rust development, see the [pattrns crate docs](https://github.com/emuell/pattrns).
+This guide focuses on the Lua scripting API. For Rust development, see the [pattrns crate docs](https://github.com/renoise/pattrns).
 
 
 ## Key Features
@@ -31,7 +31,7 @@ This guide focuses on the Lua scripting API. For Rust development, see the [patt
 : Experiment with pattrns scripts directly in your browser.<br>
 [Renoise](https://www.renoise.com)
 : Use patterns in Renoise's phrase editor.<br>
-[Rust Examples](https://github.com/emuell/pattrns/tree/master/examples)
+[Rust Examples](https://github.com/renoise/pattrns/tree/master/examples)
 : Write or test scripts in Rust or Lua with a basic sample player.<br>
 
 ## Documentation

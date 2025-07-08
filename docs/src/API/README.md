@@ -1,6 +1,6 @@
 # Lua API Reference
 
-The following chapters contain a complete listing of the pattrns Lua scripting API. The content has been auto-generated from the [LuaLS Type Definitions](https://github.com/emuell/pattrns/tree/master/types/pattrns), so you can read and use the definition files directly too.
+The following chapters contain a complete listing of the pattrns Lua scripting API. The content has been auto-generated from the [LuaLS Type Definitions](https://github.com/renoise/pattrns/tree/master/types/pattrns), so you can read and use the definition files directly too.
 
 ---
 

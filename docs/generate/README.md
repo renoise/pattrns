@@ -1,6 +1,6 @@
 # pattrns API Documentation Generator
 
-This app generates the API definition chapters in the [pattrns book](https://emuell.github.io/pattrns/) from the [Lua API definition](../../types/pattrns/) files using [luals-docs-gen](https://github.com/emuell/luals-docs-gen).
+This app generates the API definition chapters in the [pattrns book](https://renoise.github.io/pattrns/) from the [Lua API definition](../../types/pattrns/) files using [luals-docs-gen](https://github.com/emuell/luals-docs-gen).
 
 ## Requirements
 

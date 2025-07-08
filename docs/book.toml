@@ -16,7 +16,7 @@ max-level = 3
 [output.html]
 default-theme = "dark"
 preferred-dark-theme = "ayu"
-git-repository-url = "https://github.com/emuell/pattrns"
+git-repository-url = "https://github.com/renoise/pattrns"
 git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/emuell/pattrns/edit/master/docs/{path}"
 additional-css = [ "src/styles.css" ]
