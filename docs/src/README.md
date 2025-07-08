@@ -28,10 +28,11 @@ This guide focuses on the Lua scripting API. For Rust development, see the [patt
 ## Applications
 
 [Online Playground](https://pattrns.renoise.com)
-: Experiment with pattrns scripts directly in your browser<br>
+: Experiment with pattrns scripts directly in your browser.<br>
+[Renoise](https://www.renoise.com)
+: Use patterns in Renoise's phrase editor.<br>
 [Rust Examples](https://github.com/emuell/pattrns/tree/master/examples)
 : Write or test scripts in Rust or Lua with a basic sample player.<br>
-
 
 ## Documentation
 

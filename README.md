@@ -31,7 +31,7 @@ The Rust backend uses standard Rust documentation features. The docs are current
 
 - [`Online Playground`](https://pattrns.renoise.com) is a simple browser based playground app. It allows you to learn and test how pattrns works.
 
-- [`Renoise`](https://www.renoise.com) uses patterns in its [phrase editor](https://tutorials.renoise.com/wiki/Phrase_Editor).
+- [`Renoise`](https://www.renoise.com) uses pattrns in its [phrase editor](https://tutorials.renoise.com/wiki/Phrase_Editor).
 
 ## Integration Examples
 
