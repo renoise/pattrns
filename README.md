@@ -22,7 +22,7 @@ By separating the rhythmical from the tonal part of a musical sequence, each par
 
 ## Documentation & Guides
 
-Read the [Scripting Book](https://emuell.github.io/pattrns/).
+Read the [Scripting Book](https://renoise.github.io/pattrns/).
 It contains an introduction, guides, full Lua API documentation and bunch of script examples.
 
 The Rust backend uses standard Rust documentation features. The docs are currently not hosted online (yet), but you can generate them locally via `cargo doc --open`.
