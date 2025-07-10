@@ -273,7 +273,7 @@ return pattern {
 }
 ```
 - TRY THIS: Add direction changes: `if index >= #notes or index <= 1 then direction = direction * -1 end`
-- TRY THIS: Change notes based on time: `notes = scale("C4", {"major","minor"}[math.floor(context.time) % 2 + 1])`.notes
+- TRY THIS: Change notes based on time: `notes = scale("C4", {"major","minor"}[math.floor(context.pulse_time) % 2 + 1]).notes`
 
 This example demonstrates stateful emitters that remember their position between calls, enabling sequences and other time-dependent behaviors.
 
