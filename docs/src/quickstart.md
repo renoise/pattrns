@@ -74,11 +74,11 @@ See [Notes & Scales](./guide/notes&scales.md) for more info out how to express n
 return pattern {
   unit = "1/4",
   pulse = {1, {1, 1, 1, 1}}, -- One quarter note, then four sixteenth notes
-  event = {"c4", "c5", "d4", "e4", "g4"} -- C4 (quarter), C5, d4, e4, g4 (sixteenth)
+  event = {"c4", "c5", "e4", "g4", "d4"} -- c4 (quarter), c5, e4, g4, d4 (sixteenth notes)
 }
 ```
-- TRY THIS: Try more complex subdivisions like {{1, 1}, {1, {1, 1}}}
-- TRY THIS: Change the unit to "1/8" to make everything faster
+- TRY THIS: Try more complex subdivisions like `{{1, 1}, {1, {1, 1}}}`
+- TRY THIS: Change the unit to `"1/8"` to make everything faster
 
 Nested arrays in the pulse create subdivisions, allowing for more complex rhythms within the basic unit.
 
@@ -93,7 +93,7 @@ return pattern {
 }
 ```
 - TRY THIS: Change resolution to `"5/4"` for a different swing feel
-- TRY THIS: Add values such as `d0.2` between 0 and 1 to delay specific notes
+- TRY THIS: Add note properties such as `d0.2` to delay a single note
 
 The `resolution` parameter modifies the timing grid, enabling triplet feels, swing rhythms, and polyrhythms.
 
@@ -199,7 +199,7 @@ return pattern {
 }
 ```
 - TRY THIS: Add more patterns with `|` like `[c4|c5 e4 g4]|[d4 f4|g5 a4]|[e4 g4 b4]`
-- TRY THIS: Try simultaneous notes with square brackets `[c4 e4]`
+- TRY THIS: Try using `<>` instead of `[]` to select single alternating notes
 
 The `|` operator in cycles randomly selects different patterns.
 
@@ -212,7 +212,7 @@ return cycle("c4(3,8) e4(5,8) g4(7,8)")  -- Different Euclidean rhythms
 - TRY THIS: Combine with alternation: `c4(3,8)|e4(5,8)`
 - TRY THIS: Change the numbers for different distributions
 
-Tidal Cycles mini-notation also supports Euclidean patterns with the `(n,k)` notation, where `n` is the number of notes and `k` is the number of steps.
+Tidal Cycles mini-notation also supports Euclidean patterns with the `(n,k,o)` notation, where `n` is the number of notes, `k` is the number of steps and `o` an optional rotation offset.
 
 See [Cycles Guide](./guide/cycles.md) for more example and info about Tidal Cycles in pattrns.
 
@@ -273,7 +273,7 @@ return pattern {
 }
 ```
 - TRY THIS: Add direction changes: `if index >= #notes or index <= 1 then direction = direction * -1 end`
-- TRY THIS: Change notes based on time: `notes = scale("C4", {"major","minor"}[math.floor(context.time) % 2 + 1])`.notes
+- TRY THIS: Generate notes from a scale: `local notes = scale("C4", "major").notes`
 
 This example demonstrates stateful emitters that remember their position between calls, enabling sequences and other time-dependent behaviors.
 
@@ -317,7 +317,7 @@ return pattern {
 }
 ```
 - TRY THIS: Change scale to `"major", "dorian", or "pentatonic minor"`
-- TRY THIS: Add parameters: `parameter.enum("scale", "minor", {"major", "minor", "pentatonic"})`
+- TRY THIS: Add parameter to dynamically change the scale: `parameter = { parameter.enum("scale", "minor", {"major", "minor", "pentatonic"}) },`
 
 This example uses musical scale knowledge to generate chord progressions based on scale degrees.
 

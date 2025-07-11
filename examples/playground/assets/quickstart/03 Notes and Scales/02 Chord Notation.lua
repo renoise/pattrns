@@ -10,3 +10,6 @@ return pattern {
 
 -- TRY THIS: Use other chord modes like `'m5`, `'+`, or `'dim`
 -- TRY THIS: Add inversions with `note("c4'M"):transpose({12, 0, 0})`
+
+-- See https://renoise.github.io/pattrns/API/chord.html for a list
+-- of all available chord modes and related information.

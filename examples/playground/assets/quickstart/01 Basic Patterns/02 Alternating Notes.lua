@@ -5,5 +5,5 @@ return pattern {
   event = {"c4", "d4"}  -- Alternates between c4 and d4
 }
 
--- TRY THIS: Change pattern to {1, 1, 0, 1} for a different rhythm
--- TRY THIS: Add more notes to emit like {"c4", "d4", "e4", "g4"}
+-- TRY THIS: Change pattern to `{1, 1, 0, 1}` for a different rhythm
+-- TRY THIS: Add more notes to emit like `{"c4", "d4", "e4", "g4"}`

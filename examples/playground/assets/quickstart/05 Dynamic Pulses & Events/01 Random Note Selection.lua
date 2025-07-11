@@ -7,5 +7,10 @@ return pattern {
   end
 }
 
--- TRY THIS: Use notes from a specific scale with local notes = scale("c4", "major").notes
--- TRY THIS: Add amplitude variation with note(some_note):amplify(0.5 + math.random() * 0.5)
+-- TRY THIS: Use notes from a specific scale with 
+--   `local notes = scale("c4", "major").notes`
+-- TRY THIS: Add amplitude variation with
+--   `note(some_note):amplify(0.5 + math.random() * 0.5)`
+
+-- See https://renoise.github.io/pattrns/extras/randomization.html for more info
+-- about randomization.

@@ -8,4 +8,10 @@ return cycle("I III V VII"):map(function(context, value)
 end)
 
 -- TRY THIS: Change scale to "major", "dorian", or "pentatonic minor"
--- TRY THIS: Add parameters: parameter.enum("scale", "minor", {"major", "minor", "pentatonic"})
+-- TRY THIS: Add parameters: 
+--   parameter = { 
+--     parameter.enum("scale", "minor", {"major", "minor", "pentatonic"})
+--   }
+
+-- See https://renoise.github.io/pattrns/guide/parameters.html on how to
+-- add template parameters to patterns.

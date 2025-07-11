@@ -6,4 +6,8 @@ return pattern {
 }
 
 -- TRY THIS: Try different combinations like (5, 8, -2) or (7, 16)
--- TRY THIS: Use pulse = pulse.euclidean(3, 8) + pulse.euclidean(5, 8) to chain different patterns
+-- TRY THIS: Use `pulse = pulse.euclidean(3, 8) + pulse.euclidean(5, 8)`
+--   to chain different patterns
+
+-- See https://renoise.github.io/pattrns/API/pulse.html for more info about
+-- the pulse helper library. 

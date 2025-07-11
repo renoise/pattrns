@@ -10,4 +10,6 @@ return pattern {
 }
 
 -- TRY THIS: Use other scales like `"minor"`, `"dorian"`, or `"pentatonic"`
--- TRY THIS: Try different chord degrees: `scale("c", "major"):chord(2)` for D minor
+-- TRY THIS: Try different chord degrees: e.g. `scale("c", "major"):chord(2)` for d minor
+
+-- See https://renoise.github.io/pattrns/API/scale.html for more info about scales
