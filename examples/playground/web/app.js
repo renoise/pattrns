@@ -20,28 +20,51 @@ const defaultScriptContent = `--
 -- Use 'CTRL+SHIFT+SPACE' to start/stop playing.
 --
 
+-- the note patterns that we're emitting
 local note_patterns = {
+  { "c5", "d#5", "c6", "g5", "c5", "g#4" },
   { "c4", "d#4", "f4", "c5", "d#5", "f5" },
-  { "d#5", "g5", "d#5", "c6", "g#4", "c5" }
+  { "d#5", "g5", "d#5", "c6", "g#4", "c5" },
+  { "d#4", "c4", "f4", "c5", "f4", "d#5"  },
 }
 
+-- get arp direction step sign from the given direction parameter mode string
+local function step_sign(direction)
+  if direction == "up" then return 1
+  elseif direction == "down" then return -1
+  else -- random
+    return math.random() > 0.5 and 1 or -1
+  end
+end
+
+-- create final pattern
 return pattern {
   unit = "1/16",
   parameter = {
-    parameter.enum("direction", "up", { "up", "down", "random" }, "Direction"),
-    parameter.integer("mod_length", 24, { 1, 256 }, "ModLength"),
+    parameter.integer("pattern_length", 48, { 1, 256 }, "Pattern Length", 
+      "How often, in steps, we play a single arp pattern."),
+    parameter.enum("direction", "up", { "up", "down", "random" }, "Arp Direction", 
+      "How to move through a single arp pattern."),
+    parameter.number("mod_amount", 0.25, { 0, 1 }, "Mod Amount",
+      "Vol/pan modulation amount."),
+    parameter.integer("mod_length", 24, { 1, 256 }, "Mod Length",
+      "Vol/pan modulation length in unit steps."),
   },
-  pulse = { 1.0, 0.5, 0.8, 0.6, 0.4 },
+  pulse = { 1.0, 0.25, 0.8, 0.6, 0.4 },
   event = function(context)
-    local step_signs = { up = 1, down = -1, random = math.random() > 0.5 and 1 or -1 }
-    local notes = note_patterns[math.imod(math.floor((context.step - 1) / 128), #note_patterns)]
-    local step = math.imod(step_signs[context.parameter.direction] * context.step, #notes)
-    local vmod = math.cos(context.step / context.parameter.mod_length * math.pi)
-    local pmod = math.sin(context.step / context.parameter.mod_length / 3 * math.pi)
+    local pattern_length, direction, mod_amount, mod_length = 
+      context.parameter.pattern_length, context.parameter.direction, 
+      context.parameter.mod_amount, context.parameter.mod_length
+    local pattern_step = math.imod(math.floor((context.step - 1) / pattern_length) + 1, #note_patterns)
+    local notes = note_patterns[pattern_step]
+    local note_step = math.imod(step_sign(direction) * context.step, #notes)
+    local vmod = math.cos(context.step / mod_length * math.pi)
+    local pmod = math.sin(context.step / mod_length / 3 * math.pi)
     return {
-        key = notes[step], 
-        volume = context.pulse_value * (0.7 + 0.3 * vmod),
-        panning = 0.6 * pmod
+        key = notes[note_step], 
+        volume = context.pulse_value * (0.5 + 0.5 * mod_amount * vmod),
+        panning = mod_amount * pmod,
+        instrument = nil
     }
   end
 }
