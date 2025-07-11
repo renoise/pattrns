@@ -11,5 +11,9 @@ return pattern {
   event = "c4"
 }
 
--- TRY THIS: Create a threshold gate: context.pulse_value > 0.5
--- TRY THIS: Only play when a specific MIDI note is held: context.trigger.notes[1].key == "C4"
+-- TRY THIS: Create a threshold gate: `context.pulse_value > 0.5`
+-- TRY THIS: Only play when a specific MIDI note is held: 
+--   `context.trigger.notes[1].key == "C4"`
+
+-- See https://renoise.github.io/pattrns/guide/gate.html for more info about
+-- pattrns gate functions.

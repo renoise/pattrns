@@ -16,6 +16,14 @@ return pattern {
   end
 }
 
--- TRY THIS: Add occasional jumps: if math.random() < 0.1 then ... (allow larger intervals)
--- TRY THIS: Change directions based on contour: add direction variable that occasionally flips
+-- TRY THIS: Add occasional jumps: 
+--   `if math.random() < 0.1 then ...` (allow larger intervals)
+-- TRY THIS: Change directions based on contour: 
+--   add direction variable that occasionally flips
 -- TRY THIS: Change scale to "mixolydian" or some other scale
+
+-- See https://renoise.github.io/pattrns/extras/randomization.html for more info 
+-- about randimization.
+
+-- See https://renoise.github.io/pattrns/extras/generators.html for more info 
+-- about generators and local states.

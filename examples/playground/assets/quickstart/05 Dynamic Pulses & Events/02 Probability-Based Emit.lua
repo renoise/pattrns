@@ -10,7 +10,10 @@ return pattern {
 }
 
 -- TRY THIS: Vary probability by step position:
---   if math.random() < (context.step % 4) / 4 then
+--   `if math.random() < (context.step % 4) / 4 then`
 
 -- TRY THIS: Higher probability on downbeats: 
---   if math.random() < ((context.pulse_step - 1) % 2 == 0 and 0.8 or 0.2) then
+--   `if math.random() < ((context.pulse_step - 1) % 2 == 0 and 0.8 or 0.2) then`
+
+-- See https://renoise.github.io/pattrns/extras/randomization.html for more info
+-- about randimization.

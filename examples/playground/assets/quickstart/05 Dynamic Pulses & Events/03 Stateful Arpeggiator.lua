@@ -12,6 +12,9 @@ return pattern {
 }
 
 -- TRY THIS: Add direction changes:
---   if index >= #notes or index <= 1 then direction = direction * -1 end
+--   `if index >= #notes or index <= 1 then direction = direction * -1 end`
 -- TRY THIS: Generate notes from a scale: 
---   local notes = scale("C4", "major").notes
+--   `local notes = scale("C4", "major").notes`
+
+-- See https://renoise.github.io/pattrns/extras/generators.html for more info 
+-- about generators and local states.

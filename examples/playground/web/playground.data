@@ -541,8 +541,8 @@ return pattern {
   event = {"c4", "d4"}  -- Alternates between c4 and d4
 }
 
--- TRY THIS: Change pattern to {1, 1, 0, 1} for a different rhythm
--- TRY THIS: Add more notes to emit like {"c4", "d4", "e4", "g4"}
+-- TRY THIS: Change pattern to `{1, 1, 0, 1}` for a different rhythm
+-- TRY THIS: Add more notes to emit like `{"c4", "d4", "e4", "g4"}`
 -- Note properties
 return pattern {
   unit = "1/8",
@@ -555,17 +555,18 @@ return pattern {
 -- #: instrument
 
 -- TRY THIS: Play specific instruments with # such as `c4 #8`
--- TRY THIS: Add delays to some of the notes
--- Pattern with mixed note lengths
+-- TRY THIS: Add delays to some of the notes-- Pattern with mixed note lengths
 return pattern {
   unit = "1/4",
   pulse = {1, {1, 1, 1, 1}}, -- One quarter note, then four sixteenth notes
   event = {"c4", "c5", "e4", "g4", "d4"} -- C4 (quarter), c5, e4, g4, d4 (sixteenth notes)
 }
 
--- TRY THIS: Try more complex subdivisions like {{1, 1}, {1, {1, 1}}}
+-- TRY THIS: Try more complex subdivisions like `{{1, 1}, {1, {1, 1}}}`
 -- TRY THIS: Change the unit to "1/8" to make everything faster
--- Create swing or triplet feel
+
+-- See https://renoise.github.io/pattrns/guide/pulse.html for more info about
+-- pulses and pulse subdivisions.-- Create swing or triplet feel
 return pattern {
   unit = "1/8",
   resolution = 2/3, -- Triplet feel (3 notes in space of 2)
@@ -573,7 +574,10 @@ return pattern {
 }
 
 -- TRY THIS: Change resolution to "5/4" for a different swing feel
--- Distributes notes evenly across steps (common in many music traditions)
+-- TRY THIS: Add note properties such as `d0.2` to delay a single note
+
+-- See https://renoise.github.io/pattrns/guide/timebase.html for more info
+-- about time units and resolution.-- Distributes notes evenly across steps (common in many music traditions)
 return pattern {
   unit = "1/16",
   pulse = pulse.euclidean(3, 8, 0),  -- 3 hits spread over 8 steps without offset
@@ -581,20 +585,29 @@ return pattern {
 }
 
 -- TRY THIS: Try different combinations like (5, 8, -2) or (7, 16)
--- TRY THIS: Use pulse = pulse.euclidean(3, 8) + pulse.euclidean(5, 8) to chain different patterns
--- Create a chord by stacking notes
+-- TRY THIS: Use `pulse = pulse.euclidean(3, 8) + pulse.euclidean(5, 8)`
+--   to chain different patterns
+
+-- See https://renoise.github.io/pattrns/API/pulse.html for more info about
+-- the pulse helper library. -- Create a chord by stacking notes
 return pattern {
   unit = "1/1",
   event = { {"c4", "e4", "g4"}, "c4" } -- C major chord followed by a single C4
 }
 
 -- TRY THIS: Try different chord combinations like `{"d4", "f4", "a4"}` for D minor
--- TRY THIS: Add `v` values to create dynamics: `{"c4 v0.8", "e4 v0.6", "g4 v0.4"}
+-- TRY THIS: Add `v` values to create dynamics: `{"c4 v0.8", "e4 v0.6", "g4 v0.4"}`
 -- TRY THIS: Use `sequence` and `note` functions to group and modify notes:
 --   sequence { 
 --      note{"c4","e4","g4"}:transpose({12,}),
 --      note{"c4"}:volume(0.8)
 --   }
+
+-- See https://renoise.github.io/pattrns/API/sequence.html for more info about 
+-- the `sequence` function.
+
+-- See https://renoise.github.io/pattrns/API/note.html for more info about 
+-- the `note` function.
 -- Using chord notation shortcuts
 return pattern {
   unit = "1/1",
@@ -607,7 +620,9 @@ return pattern {
 
 -- TRY THIS: Use other chord modes like `'m5`, `'+`, or `'dim`
 -- TRY THIS: Add inversions with `note("c4'M"):transpose({12, 0, 0})`
--- Advanced chord and scale operations
+
+-- See https://renoise.github.io/pattrns/API/chord.html for a list
+-- of all available chord modes and related information.-- Advanced chord and scale operations
 return pattern {
   unit = "1/1",
   event = {
@@ -619,39 +634,39 @@ return pattern {
 }
 
 -- TRY THIS: Use other scales like `"minor"`, `"dorian"`, or `"pentatonic"`
--- TRY THIS: Try different chord degrees: `scale("c", "major"):chord(2)` for D minor
--- Using tidal cycles notation for concise patterns
+-- TRY THIS: Try different chord degrees: e.g. `scale("c", "major"):chord(2)` for d minor
+
+-- See https://renoise.github.io/pattrns/API/scale.html for more info about scales-- Using tidal cycles notation for concise patterns
 return pattern {
   unit = "1/4", -- Emit a cycle every beat
   event = cycle("c4 e4 g4") -- C major arpeggio
 }
 
--- TRY THIS: The simplified notation emits a cycle per bar
--- TRY THIS: Add more patterns with | like [c4|c5 e4 g4]|[d4 f4|g5 a4]|[e4 g4 b4]
--- TRY THIS: Try simultaneous notes with square brackets [c4 e4]
+-- TRY THIS: The simplified notation (without return patterns) emits a cycle per bar
+--   `return cycle("c4 e4 g4")`
 
--- See https://tidalcycles.org/docs/reference/mini_notation/ 
--- for more info about the Tidal Cycles mini-notation-- Switching between different patterns
+-- See https://renoise.github.io/pattrns/guide/cycles.html
+-- for more info about the Tidal Cycles mini-notation in pattrns.-- Switching between different patterns
 return pattern {
   unit = "1/4",
   event = cycle("[c4 e4 g4]|[d4 f4 a4]") -- Randomly select one of two chords
 }
 
--- TRY THIS: Combine with alternation: c4(3,8)|e4(5,8)
--- TRY THIS: Change the numbers for different distributions
+-- TRY THIS: Add more patterns with `|` like `[c4|c5 e4 g4]|[d4 f4|g5 a4]|[e4 g4 b4]`
+-- TRY THIS: Try using `<>` instead of `[]` to select single alternating notes
 
--- See https://tidalcycles.org/docs/reference/mini_notation/ 
--- for more info about the Tidal Cycles mini-notatio-- Euclidean patterns in tidal cycles notation
+-- See https://renoise.github.io/pattrns/guide/cycles.html
+-- for more info about the Tidal Cycles mini-notation in pattrns.-- Euclidean patterns in tidal cycles notation
 return pattern {
   unit = "1/1",
   event = cycle("c4(3,8) e4(5,8) g4(7,8)")  -- Different Euclidean rhythms
 }
 
--- TRY THIS: Combine with alternation: c4(3,8)|e4(5,8)
+-- TRY THIS: Combine with alternation: `c4(3,8)|e4(5,8)`
 -- TRY THIS: Change the numbers for different distributions
 
--- See https://tidalcycles.org/docs/reference/mini_notation/ 
--- for more info about the Tidal Cycles mini-notatio-- Randomly select notes from a list
+-- See https://renoise.github.io/pattrns/guide/cycles.html
+-- for more info about the Tidal Cycles mini-notation in pattrns.-- Randomly select notes from a list
 local notes = {"c4", "d4", "e4", "g4"}
 return pattern {
   unit = "1/8",
@@ -660,9 +675,13 @@ return pattern {
   end
 }
 
--- TRY THIS: Use notes from a specific scale with local notes = scale("c4", "major").notes
--- TRY THIS: Add amplitude variation with note(some_note):amplify(0.5 + math.random() * 0.5)
--- Emit notes with certain probability
+-- TRY THIS: Use notes from a specific scale with 
+--   `local notes = scale("c4", "major").notes`
+-- TRY THIS: Add amplitude variation with
+--   `note(some_note):amplify(0.5 + math.random() * 0.5)`
+
+-- See https://renoise.github.io/pattrns/extras/randomization.html for more info
+-- about randomization.-- Emit notes with certain probability
 return pattern {
   unit = "1/8",
   pulse = {1, 1, 1, 1},  -- Regular pattern
@@ -674,11 +693,13 @@ return pattern {
 }
 
 -- TRY THIS: Vary probability by step position:
---   if math.random() < (context.step % 4) / 4 then
+--   `if math.random() < (context.step % 4) / 4 then`
 
 -- TRY THIS: Higher probability on downbeats: 
---   if math.random() < ((context.pulse_step - 1) % 2 == 0 and 0.8 or 0.2) then
--- Create patterns that remember previous states
+--   `if math.random() < ((context.pulse_step - 1) % 2 == 0 and 0.8 or 0.2) then`
+
+-- See https://renoise.github.io/pattrns/extras/randomization.html for more info
+-- about randimization.-- Create patterns that remember previous states
 return pattern {
   unit = "1/8",
   event = function(init_context)
@@ -692,10 +713,12 @@ return pattern {
 }
 
 -- TRY THIS: Add direction changes:
---   if index >= #notes or index <= 1 then direction = direction * -1 end
+--   `if index >= #notes or index <= 1 then direction = direction * -1 end`
 -- TRY THIS: Generate notes from a scale: 
---   local notes = scale("C4", "major").notes
--- Filter which notes actually play using gates
+--   `local notes = scale("C4", "major").notes`
+
+-- See https://renoise.github.io/pattrns/extras/generators.html for more info 
+-- about generators and local states.-- Filter which notes actually play using gates
 return pattern {
   unit = "1/8",
   pulse = {1, 0.1, 1, 0.5, 1, 0.2, 1, 0.1}, -- probability values
@@ -708,9 +731,12 @@ return pattern {
   event = "c4"
 }
 
--- TRY THIS: Create a threshold gate: context.pulse_value > 0.5
--- TRY THIS: Only play when a specific MIDI note is held: context.trigger.notes[1].key == "C4"
--- Identifiers in cycles can be dynamically mapped to something else
+-- TRY THIS: Create a threshold gate: `context.pulse_value > 0.5`
+-- TRY THIS: Only play when a specific MIDI note is held: 
+--   `context.trigger.notes[1].key == "C4"`
+
+-- See https://renoise.github.io/pattrns/guide/gate.html for more info about
+-- pattrns gate functions.-- Identifiers in cycles can be dynamically mapped to something else
 local s = scale("C4", "minor")
 return cycle("I III V VII"):map(function(context, value)
   -- value here is a single roman number from the cycle above
@@ -720,8 +746,13 @@ return cycle("I III V VII"):map(function(context, value)
 end)
 
 -- TRY THIS: Change scale to "major", "dorian", or "pentatonic minor"
--- TRY THIS: Add parameters: parameter.enum("scale", "minor", {"major", "minor", "pentatonic"})
--- Create melodies that follow musical rules
+-- TRY THIS: Add parameters: 
+--   parameter = { 
+--     parameter.enum("scale", "minor", {"major", "minor", "pentatonic"})
+--   }
+
+-- See https://renoise.github.io/pattrns/guide/parameters.html on how to
+-- add template parameters to patterns.-- Create melodies that follow musical rules
 return pattern {
   unit = "1/8",
   event = function(init_context)
@@ -739,10 +770,17 @@ return pattern {
   end
 }
 
--- TRY THIS: Add occasional jumps: if math.random() < 0.1 then ... (allow larger intervals)
--- TRY THIS: Change directions based on contour: add direction variable that occasionally flips
+-- TRY THIS: Add occasional jumps: 
+--   `if math.random() < 0.1 then ...` (allow larger intervals)
+-- TRY THIS: Change directions based on contour: 
+--   add direction variable that occasionally flips
 -- TRY THIS: Change scale to "mixolydian" or some other scale
-fLaC   "   ⁄ AH∏  [O3‰ux8	ˇc“'Æ‚÷Ñ  (    reference libFLAC 1.3.1 20141125    ˇ¯  ◊ -´ 	ãJ ›F 46˙VW0 #d’⁄g_zÜ7å2*∆ŸØ˛ºŸÍE'Û”§»Ç$ò<˛&gZoÃ–&~WÔhã4Ä..˛|ﬂtÄ@4~˛ó_|ﬁ¥ 9"˛®?!«‰pˇUë·rÄaˇßü…  ∂8®?—Á‰Ö X∏ΩﬂÊ„Ú,`*2≈ˇÚ[˘Ä™ –ˇ¯è˝Ï@‰ ∫˜©˝«‡ ûˆÂ˝¢¿;†˙ø◊ı≈ ›†–ˇH”‡Ä-_¸À@H8 ãœÒıˇâ N®ˇ	ﬂú0Ä≥‡~¿H/¯:ˇÄ ;˝5©†Xç›g˝SI¿0∑˛âˇAX
+
+-- See https://renoise.github.io/pattrns/extras/randomization.html for more info 
+-- about randimization.
+
+-- See https://renoise.github.io/pattrns/extras/generators.html for more info 
+-- about generators and local states.fLaC   "   ⁄ AH∏  [O3‰ux8	ˇc“'Æ‚÷Ñ  (    reference libFLAC 1.3.1 20141125    ˇ¯  ◊ -´ 	ãJ ›F 46˙VW0 #d’⁄g_zÜ7å2*∆ŸØ˛ºŸÍE'Û”§»Ç$ò<˛&gZoÃ–&~WÔhã4Ä..˛|ﬂtÄ@4~˛ó_|ﬁ¥ 9"˛®?!«‰pˇUë·rÄaˇßü…  ∂8®?—Á‰Ö X∏ΩﬂÊ„Ú,`*2≈ˇÚ[˘Ä™ –ˇ¯è˝Ï@‰ ∫˜©˝«‡ ûˆÂ˝¢¿;†˙ø◊ı≈ ›†–ˇH”‡Ä-_¸À@H8 ãœÒıˇâ N®ˇ	ﬂú0Ä≥‡~¿H/¯:ˇÄ ;˝5©†Xç›g˝SI¿0∑˛âˇAX
 º√?¯˙° Z¿˜ˇ‚øŸÜÏ¿&ˇÙu∞Í ¨œËå˛A# ø/Ë”˛JH4*øì„¯^h[ Qü‰÷˛.˝ )7Ú7<ﬁ¿a˚Ëˇ	¶¿Ç˚|sÃ¿qüÎ√¸WÙÎo«•Ûû∞≤H'ø£%H	¡¡å[‹ÊÎ•A¯Ò9~’-#DﬂC¥´ƒ0ãN¶√”ZHg$u˚Êü[ÛˇÀ≠—{Bu‡"Í˝çΩâ.64?‚€ﬁ†-`?◊˛n¸ò†™ †˘ÖÚø@jh≤·œÀöñ‡
 `ˇc-<Õ #_¸¶¸¢∆¡ˇ‹Ô‰˜Äó˝6˛◊ 5ÿˆˇ#©0
 ∏ˇ¡(qÃ``6ˇ<ÄS–˜˛kˇ‹Ä[–gˇ^˛≥Ä1@˛Ç_›îV ™_“o˘,¿fPó˝2ﬂï≤> ⁄O“≠˘_†` sÚJ˛‘º ´πø„Úë >7Î¯ó∞T†eˇá|üÄBˇ˙ƒ˙\A:_@Ê4ÇÍ¸…aÅˆ?◊‰8ôˇ¶˛£`.@ïÀ>ÏÄ5P]·?(@‚ µˇÙÀ` -G˙˚ÛÄæ`	˝Ò¸Æ &¯j˛î˛C`; o¸˝ç ª¿$èÛ`‰{ˇ] ≤@XÒ–Ë	Ô˛Ò˝QÄœ¿qﬂ–G˜úT ¢?§œ‰¯RÄŒ¶WÂò ‡ˇ•WÂSŒÄ‚üˇø»6Ïüﬁﬂ±0ËW˛‚ˇ@êø˚?‰'Ù®

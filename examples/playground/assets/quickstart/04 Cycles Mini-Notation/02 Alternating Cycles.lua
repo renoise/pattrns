@@ -4,8 +4,8 @@ return pattern {
   event = cycle("[c4 e4 g4]|[d4 f4 a4]") -- Randomly select one of two chords
 }
 
--- TRY THIS: Combine with alternation: c4(3,8)|e4(5,8)
--- TRY THIS: Change the numbers for different distributions
+-- TRY THIS: Add more patterns with `|` like `[c4|c5 e4 g4]|[d4 f4|g5 a4]|[e4 g4 b4]`
+-- TRY THIS: Try using `<>` instead of `[]` to select single alternating notes
 
--- See https://tidalcycles.org/docs/reference/mini_notation/ 
--- for more info about the Tidal Cycles mini-notatio
+-- See https://renoise.github.io/pattrns/guide/cycles.html
+-- for more info about the Tidal Cycles mini-notation in pattrns.
