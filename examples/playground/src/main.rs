@@ -180,7 +180,7 @@ impl Playground {
         let playing = false;
         let mut player = SamplePlayer::new(Arc::clone(&sample_pool), None)?;
         player.set_sample_root_note(Note::C4);
-        player.set_new_note_action(NewNoteAction::Off(Some(Duration::from_millis(200))));
+        player.set_new_note_action(NewNoteAction::Off(Some(Duration::from_millis(350))));
 
         // sequence & pattern
         let sequence = None;
