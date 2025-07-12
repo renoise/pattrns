@@ -247,3 +247,54 @@ return pattern {
   )
 }
 ```
+
+Adding note properties on top of a cycle's output
+
+```lua
+return cycle([=[
+  [<a3 d4 [e3 d3]> <f3 c4 g3>]*4,
+  <d3 f4 a2 c3 g2>*2
+  ]=])
+  :map(function(context, value)
+    return 
+      note(value)
+      :volume(0.3 + math.random() * 0.6)
+      :panning(math.sin((context.step - 1) * .4) * .8)
+      :delay(.2 * math.random())
+      :instrument(context.step % 3)
+  end)
+```
+
+Custom parsing of values and remapping using parameters
+
+```lua
+-- prepare an instrument with a set of samples and update this value
+local number_of_samples = 10
+
+return pattern {
+  parameter = {
+    parameter.integer("sample", 0, {0, number_of_samples - 1}),
+    parameter.number("random_sample", 0, {0, 1}),
+    parameter.integer("transpose", 0, {-36, 36}),
+    parameter.number("random_pitch", 0.1, {0, 1}),
+    parameter.number("random_spread", 0.3, {0, 1})
+  },
+  unit = "1/4",
+  event = cycle([=[
+    s0*<1 1 0 2> s1*4 s2 s1*<1 1 3>, 
+    <s4 s5 <s4 s6>>*4
+    ]=]):map(function(context, value)
+    -- parse the number after each "s" into an index
+    local sample_index = tonumber(value:sub(2)) or 0
+    return 
+      note("c3")
+      :instrument(
+        (sample_index
+          + context.parameter.sample 
+          + context.parameter.random_sample * math.random(0,number_of_samples)
+        ) % number_of_samples)
+      :transpose(context.parameter.transpose + context.parameter.random_pitch * math.random(-36, 36))
+      :panning(context.parameter.random_spread * (-1 + 2 * math.random()))
+    end)
+}
+```
