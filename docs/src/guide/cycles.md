@@ -9,14 +9,14 @@ Cycles let you create repeating musical patterns using a simple text notation. T
 
 ```lua
 -- Basic pattern with notes and rests
-return cycle("c4 d4 <e4 g4> _")
+return cycle("c4 d4 <e4 g4> ~")
 ```
 
 This plays:
 1. C4
 2. D4
 3. Alternate between E4 and G4
-4. play no event: `_` means rest
+4. play no event: `~` means rest
 
 ## Pattern Basics
 
