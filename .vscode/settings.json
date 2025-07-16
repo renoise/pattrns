@@ -19,7 +19,8 @@
         "types/pattrns"
     ],
     "Lua.workspace.ignoreDir": [
-        "docs"
+        "bindings",
+        "docs",
     ],
     "Lua.hint.arrayIndex": "Disable"
 }
