@@ -1,0 +1,42 @@
+[package]
+categories = ["multimedia::audio"]
+description = "C++ bindings for the pattrns Rust library"
+edition = "2021"
+license = "GNU AFFERO"
+name = "pattrns-bindings"
+readme = "README.md"
+repository = "https://github.com/renoise/pattrns"
+version = "0.1.0"
+
+[dependencies]
+pattrns = { path = "../", default-features = false, optional = true }
+
+static_assertions = { version = "^1.1" }
+panic-message = { version = "^0.3" }
+dhat = { version = "^0.3", optional = true }
+
+[build-dependencies]
+cbindgen = { version = "^0.29" }
+
+[lib]
+crate-type = ["cdylib"]
+name = "pattrns"
+
+[profile.dev]
+debug = "full"
+
+[profile.bench]
+debug = "full"
+
+[profile.release]
+debug = "full"
+panic = "unwind"
+
+[features]
+dhat-profiler = ["dhat"]
+
+lua = ["pattrns", "pattrns/scripting", "pattrns/lua"]
+lua-jit = ["pattrns", "pattrns/scripting", "pattrns/lua-jit"]
+
+# lua and lua-jit are mutually exclusive! turn of default-features when switching to `lua`
+default = ["lua-jit"]
