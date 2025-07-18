@@ -13,7 +13,7 @@ use self::{
     cycle::CycleUserData,
     note::NoteUserData,
     parameter::ParameterUserData,
-    rhythm::pattern_from_userdata,
+    pattern::pattern_from_userdata,
     sequence::SequenceUserData,
     unwrap::{
         bad_argument_error, note_event_from_value, optional_string_from_value, string_from_value,
@@ -36,7 +36,7 @@ mod callback;
 mod cycle;
 mod note;
 mod parameter;
-mod rhythm;
+mod pattern;
 mod scale;
 mod sequence;
 mod timeout;
