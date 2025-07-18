@@ -96,7 +96,7 @@ impl ContextPlaybackState {
 ///
 /// TODO: Upvalues of generators or simple functions could actually be collected and restored
 /// too, but this uses debug functionality and may break some upvalues.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct LuaCallback {
     environment: Option<LuaTable>,
     context: LuaAnyUserData,
@@ -105,6 +105,30 @@ pub(crate) struct LuaCallback {
     initialized: bool,
     #[allow(unused)]
     lua: Lua,
+}
+
+impl Clone for LuaCallback {
+    fn clone(&self) -> Self {
+        // reuse existing interpreter, function and environment refs, but create a new unique
+        // context instance for every new callback clone, so new instances can have unique contexts
+        let new_context = self
+            .context
+            .borrow::<CallbackContext>()
+            .expect("Failed to borrow Luacallback context data")
+            .clone();
+        let new_context_userdata = self
+            .lua
+            .create_userdata(new_context)
+            .expect("Failed to create a new LuaCallback context userdata");
+        Self {
+            environment: self.environment.clone(),
+            context: new_context_userdata,
+            generator: self.generator.clone(),
+            function: self.function.clone(),
+            initialized: self.initialized,
+            lua: self.lua.clone(),
+        }
+    }
 }
 
 impl LuaCallback {
@@ -521,8 +545,14 @@ context_value_from_number_impl!(f64);
 mod test {
     use std::borrow::BorrowMut;
 
-    use super::*;
-    use crate::{bindings::*, Event, Note, PatternEvent};
+    use crate::{
+        bindings::*,
+        event::{Event, NoteEvent},
+        note::Note,
+        pattern::{
+            beat_time::BeatTimePattern, second_time::SecondTimePattern, Pattern, PatternEvent,
+        },
+    };
 
     fn new_test_engine(
         beats_per_min: f32,
@@ -603,6 +633,76 @@ mod test {
                 ]
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn callback_clones() -> LuaResult<()> {
+        let (lua, _) = new_test_engine(120.0, 4, 44100)?;
+
+        // create a beat_time pattern which emits the context trigger notes
+        let pattern = lua
+            .load(
+                r#"
+                return pattern {
+                    unit = "1/4",
+                    event = function(context)
+                      return context.trigger.notes
+                    end
+                }
+            "#,
+            )
+            .eval::<LuaValue>()?;
+
+        // create a pattern
+        let mut pattern = pattern
+            .as_userdata()
+            .unwrap()
+            .borrow_mut::<BeatTimePattern>()?;
+
+        // create a pattern clone
+        let pattern2 = pattern.duplicate();
+        let mut pattern2 = (*pattern2).borrow_mut();
+
+        // create and apply unique trigger events for both instances
+        let trigger_event = Event::NoteEvents(vec![Some(NoteEvent {
+            note: Note::A4,
+            instrument: None,
+            volume: 0.5,
+            panning: 0.0,
+            delay: 0.25,
+        })]);
+        pattern.set_trigger_event(&trigger_event);
+
+        let trigger_event2 = Event::NoteEvents(vec![Some(NoteEvent {
+            note: Note::C4,
+            instrument: None,
+            volume: 1.0,
+            panning: -1.0,
+            delay: 0.5,
+        })]);
+        pattern2.set_trigger_event(&trigger_event2);
+
+        // ensure clone and original pattern instance use different context values (triggers)
+        let event = pattern.next();
+        assert_eq!(
+            event,
+            Some(PatternEvent {
+                time: 0,
+                event: Some(trigger_event),
+                duration: 22050,
+            })
+        );
+
+        let event2 = pattern2.next();
+        assert_eq!(
+            event2,
+            Some(PatternEvent {
+                time: 0,
+                event: Some(trigger_event2),
+                duration: 22050,
+            })
+        );
         Ok(())
     }
 }
