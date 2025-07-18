@@ -1,4 +1,4 @@
-# pattrns C++
+# Bindings
 
 C++ bindings for the Rust `pattrns` library.
 
