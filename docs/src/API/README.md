@@ -12,6 +12,6 @@ Then download a copy of the pattrns type definitions folder (`./types/pattrns`) 
 
 ```json
 {
-    "Lua.workspace.library": ["PATH/TO/NERDO_DEFINITION_FOLDER"]
+    "Lua.workspace.library": ["PATH/TO/PATTRNS_TYPES_FOLDER"]
 }
 ```
