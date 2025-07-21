@@ -118,7 +118,7 @@ return pattern {
     local triggers = table.from{ 0, 6, 10 }
     return function(context)
       local step = (context.pulse_step - 1) % 16
-      return rand() > 0.8 and triggers:contains(step)
+      return rand() > 0.3 and triggers:contains(step)
     end
   end,
   event = "c4"

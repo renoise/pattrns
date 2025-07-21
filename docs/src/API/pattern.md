@@ -312,7 +312,7 @@
 > ```lua
 > -- stateful pulse function
 > pulse = function(init_context)
->   local triggers = table.new{ 0, 6, 10 }
+>   local triggers = table.from{ 0, 6, 10 }
 >   return function(context)
 >     local step = (context.pulse_step - 1) % 16
 >     return triggers:contains(step)
