@@ -1,8 +1,6 @@
-# pattrns
+<img src="./docs/src/logo.png" alt="pattrns" height="50"/>
 
-***pattrns*** is an experimental imperative-style music sequence generator engine. 
-
-It allows you to programmatically create music sequences either in plain [Rust](https://www.rust-lang.org/) as library (*static, compiled*) or in [Lua](https://www.lua.org/) as a scripting engine (*dynamic, interpreted*). So it's also suitable for [live coding music](https://github.com/pjagielski/awesome-live-coding-music).
+is an experimental imperative music sequence generator engine. It allows you to programmatically create music sequences either in plain [Rust](https://www.rust-lang.org/) as library (*static, compiled*) or in [Lua](https://www.lua.org/) as a scripting engine (*dynamic, interpreted*). So it's also suitable for [live coding music](https://github.com/pjagielski/awesome-live-coding-music).
 
 In addition to its imperative event generator approach, it also supports the creation of musical events using [TidalCycles'](https://tidalcycles.org/) mini-notation.
 
