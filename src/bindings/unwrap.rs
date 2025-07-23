@@ -34,8 +34,8 @@ pub(crate) fn bad_argument_error<'a, 'b, S1: Into<Option<&'a str>>, S2: Into<Opt
 // Check for known table properties
 pub(crate) fn validate_table_properties(table: &LuaTable, properties: &[&str]) -> LuaResult<()> {
     for (key, _) in table.clone().pairs::<LuaValue, LuaValue>().flatten() {
-        if let Some(key) = key.as_str() {
-            if !properties.contains(&key.as_ref()) {
+        if let Some(key) = key.as_string().map(|s| s.to_string_lossy()) {
+            if !properties.contains(&key.as_str()) {
                 return Err(LuaError::RuntimeError(format!(
                     "invalid/unknown table property: '{}'. valid properties are: '{}'",
                     key,
@@ -137,7 +137,7 @@ pub(crate) fn string_from_value(
     arg_name: &str,
     arg_index: usize,
 ) -> LuaResult<String> {
-    if let Some(string) = value.as_string_lossy() {
+    if let Some(string) = value.as_string().map(|s| s.to_string_lossy()) {
         Ok(string)
     } else {
         Err(bad_argument_error(
@@ -156,7 +156,7 @@ pub(crate) fn optional_string_from_value(
     arg_name: &str,
     arg_index: usize,
 ) -> LuaResult<String> {
-    if let Some(string) = value.as_string_lossy() {
+    if let Some(string) = value.as_string().map(|s| s.to_string_lossy()) {
         Ok(string)
     } else if value.is_nil() {
         Ok(String::new())
@@ -469,7 +469,7 @@ pub(crate) fn note_degree_from_value(arg: &LuaValue, arg_index: usize) -> LuaRes
         } else {
             Ok(value)
         }
-    } else if let Some(value) = arg.as_str() {
+    } else if let Some(value) = arg.as_string().map(|s| s.to_string_lossy()) {
         match value.to_lowercase().as_str() {
             "i" => Ok(1),
             "ii" => Ok(2),
@@ -552,7 +552,7 @@ pub(crate) fn note_event_from_table_map(table: &LuaTable) -> LuaResult<Option<No
             )))
         }
         // { key = "C4", [instrument = 1, volume = 1.0, panning = 0.0, delay = 0.0] }
-        else if let Some(note_str) = key.as_str() {
+        else if let Some(note_str) = key.as_string().map(|s| s.to_string_lossy()) {
             let note = Note::try_from(&*note_str)
                 .map_err(|err| LuaError::RuntimeError(err.to_string()))?;
             Ok(new_note((note, instrument, volume, panning, delay)))

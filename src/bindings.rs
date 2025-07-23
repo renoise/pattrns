@@ -178,8 +178,8 @@ fn register_global_bindings(
         lua.create_function(
             |lua, (note, mode_or_intervals): (LuaValue, LuaValue)| -> LuaResult<Scale> {
                 let note = FromLua::from_lua(note, lua)?;
-                if let Some(mode) = mode_or_intervals.as_str() {
-                    match Scale::try_from((note, mode.as_ref())) {
+                if let Some(mode) = mode_or_intervals.as_string().map(|s| s.to_string_lossy()) {
+                    match Scale::try_from((note, mode.as_str())) {
                         Ok(scale) => Ok(scale),
                         Err(err) => Err(bad_argument_error(
                             "scale",
@@ -329,16 +329,16 @@ fn register_global_bindings(
         "__index",
         lua.create_function(
             |lua, (table, key): (LuaTable, LuaValue)| -> LuaResult<LuaValue> {
-                if let Some(key) = key.as_str() {
+                if let Some(key) = key.as_string() {
                     if key.as_bytes() != b"pulse" {
                         let declared_globals = &lua
                             .app_data_ref::<LuaAppData>()
                             .expect("Failed to access Lua app data")
                             .declared_globals;
-                        if !declared_globals.contains(key.as_bytes()) {
+                        if !declared_globals.contains(key.as_bytes().as_ref()) {
                             return Err(LuaError::runtime(format!(
                                 "trying to access undeclared variable '{}'",
-                                key
+                                String::from_utf8_lossy(key.as_bytes().as_ref())
                             )));
                         }
                     }
@@ -350,13 +350,13 @@ fn register_global_bindings(
     globals_mt.set(
         "__newindex",
         lua.create_function(|lua, (table, key, value): (LuaTable, LuaValue, LuaValue)| {
-            if let Some(key) = key.as_str() {
+            if let Some(key) = key.as_string() {
                 if key.as_bytes() != b"pulse" {
                     let declared_globals = &mut lua
                         .app_data_mut::<LuaAppData>()
                         .expect("Failed to access Lua app data")
                         .declared_globals;
-                    declared_globals.insert(key.as_bytes().into());
+                    declared_globals.insert(key.as_bytes().to_vec());
                 }
             }
             table.raw_set(key, value)
@@ -366,7 +366,7 @@ fn register_global_bindings(
         globals.metatable().is_none(),
         "Globals already have a meta table set"
     );
-    globals.set_metatable(Some(globals_mt));
+    globals.set_metatable(Some(globals_mt))?;
 
     Ok(())
 }
