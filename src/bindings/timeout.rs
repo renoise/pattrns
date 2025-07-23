@@ -68,7 +68,8 @@ impl LuaTimeoutHook {
                     }
                     Err(err) => Err(err),
                 },
-            );
+            )
+            .expect("Failed to install lua hook");
         }
         // Luau -> set_interrupt
         #[cfg(any(feature = "luau", feature = "luau-jit"))]
