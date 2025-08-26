@@ -200,7 +200,7 @@ impl Chord {
     /// return list of all known chord names with unique intervals.
     pub fn unique_names() -> Vec<String> {
         let mut unique_chords = CHORD_TABLE.iter().collect::<Vec<_>>();
-        // prefere longer names, then dedup
+        // prefer longer names, then dedup
         unique_chords.sort_by(|(an, _), (bn, _)| bn.len().cmp(&an.len()));
         unique_chords.sort_by(|(_, ai), (_, bi)| ai.cmp(bi));
         // dedup, but keep add/dom duplicates

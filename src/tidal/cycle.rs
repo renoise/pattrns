@@ -16,7 +16,7 @@ use crate::rhythm::euclidean::euclidean;
 
 // -------------------------------------------------------------------------------------------------
 
-const OVERFLOW_ERROR: &str = "Internal error: interger overflow in cycle";
+const OVERFLOW_ERROR: &str = "Internal error: integer overflow in cycle";
 
 // -------------------------------------------------------------------------------------------------
 
@@ -1849,7 +1849,7 @@ impl Cycle {
         match right {
             // multiply with single values to avoid generating events
             Step::Single(single) => {
-                // apply mutiplier
+                // apply multiplier
                 let multiplier = Self::step_multiplier(step, &single.value);
                 Ok(Self::output_multiplied(
                     left, state, cycle, multiplier, limit, overlap,

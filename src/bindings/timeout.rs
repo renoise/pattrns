@@ -94,7 +94,7 @@ impl LuaTimeoutHook {
 
 impl Clone for LuaTimeoutHook {
     fn clone(&self) -> Self {
-        // increase active isntances refcount
+        // increase active instances refcount
         *self.active.borrow_mut() += 1;
         // return a direct clone otherwise
         Self {

@@ -2,7 +2,7 @@ use crate::{BeatTimeBase, Emitter, EmitterEvent, Event, ParameterSet, RhythmEven
 
 // -------------------------------------------------------------------------------------------------
 
-/// Emitter which continously emits nothing (`None` events).
+/// Emitter which continuously emits nothing (`None` events).
 #[derive(Clone, Debug)]
 pub struct EmptyEmitter {}
 

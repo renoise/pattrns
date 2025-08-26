@@ -114,7 +114,7 @@ impl Clone for LuaCallback {
         let new_context = self
             .context
             .borrow::<CallbackContext>()
-            .expect("Failed to borrow Luacallback context data")
+            .expect("Failed to borrow LuaCallback context data")
             .clone();
         let new_context_userdata = self
             .lua

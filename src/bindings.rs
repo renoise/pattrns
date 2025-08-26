@@ -822,7 +822,7 @@ mod test {
         // reset timeout
         timeout_hook.reset();
 
-        // undeclated globals strict checks are present and do their job
+        // undeclared globals strict checks are present and do their job
         assert!(lua
             .load(r#"return this_does_not_exist == nil"#)
             .eval::<LuaValue>()

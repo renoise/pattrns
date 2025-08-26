@@ -2,7 +2,7 @@ use crate::{BeatTimeBase, Event, ParameterSet, Rhythm, RhythmEvent};
 
 // -------------------------------------------------------------------------------------------------
 
-/// An empty rhythm which continuisly emits None pulse values.
+/// An empty rhythm which continuously emits None pulse values.
 #[derive(Clone, Debug, Default)]
 pub struct EmptyRhythm {}
 

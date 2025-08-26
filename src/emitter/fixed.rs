@@ -249,7 +249,7 @@ pub fn new_polyphonic_note_sequence_emitter<E: Into<NoteEvent>>(
     new_polyphonic_note_sequence(polyphonic_sequence).to_sequence_emitter()
 }
 
-/// Shortcut for creating an [`Emitter`] which produces paranmeter changes.
+/// Shortcut for creating an [`Emitter`] which produces parameter changes.
 pub fn new_parameter_change_emitter<Parameter: Into<Option<ParameterId>>>(
     parameter: Parameter,
     value: f32,

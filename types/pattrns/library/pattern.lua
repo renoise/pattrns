@@ -224,8 +224,8 @@ error("Do not try to execute this file. It's just a type definition file.")
 ---
 ---### examples:
 ---```lua
------ probability gate: skips all 0s, passes all 1s. pulse alues in range (0, 1) are
------ maybe passed, using the pulse value as probablility.
+----- probability gate: skips all 0s, passes all 1s. pulse values in range (0, 1) are
+----- maybe passed, using the pulse value as probability.
 ---gate = function(context)
 ---  return context.pulse_value > math.random()
 ---end

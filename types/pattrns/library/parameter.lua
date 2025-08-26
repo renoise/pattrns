@@ -41,7 +41,7 @@ local Parameter = {}
 ----------------------------------------------------------------------------------------------------
 
 ---Contains functions to construct new parameters. Parameter values can be accessed
----via function `contexts` in `puse`, `gate` and `event` functions or generators.
+---via function `contexts` in `pulse`, `gate` and `event` functions or generators.
 ---@class Parameter
 parameter = {}
 

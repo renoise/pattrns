@@ -45,7 +45,7 @@ impl FixedRhythm {
         }
     }
 
-    /// Create from an euclidan rhythm.
+    /// Create from an euclidean rhythm.
     pub fn from_euclidean(steps: u32, pulses: u32, offset: i32) -> Self {
         Self::from_pulses(euclidean(steps, pulses, offset))
     }
