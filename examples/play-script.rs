@@ -40,11 +40,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ColorChoice::Auto,
     )
     .unwrap_or_else(|err| {
-        log::error!("init_logger error: {:?}", err);
+        log::error!("init_logger error: {err:?}");
     });
 
     // fetch contents from demo dir
-    log::info!("Searching for wav/script files in path '{}'...", DEMO_PATH);
+    log::info!("Searching for wav/script files in path '{DEMO_PATH}'...");
     let sample_pool = Arc::new(SamplePool::new());
     struct PatternEntry {
         instrument_id: InstrumentId,
@@ -86,11 +86,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |res: Result<notify::Event, notify::Error>| match res {
             Ok(event) => {
                 if !event.kind.is_access() {
-                    log::info!("File change event: {:?}", event);
+                    log::info!("File change event: {event:?}");
                     script_files_changed.store(true, Ordering::Relaxed);
                 }
             }
-            Err(err) => log::error!("File watch error: {}", err),
+            Err(err) => log::error!("File watch error: {err}"),
         }
     })?;
     watcher.watch(Path::new(DEMO_PATH), RecursiveMode::Recursive)?;

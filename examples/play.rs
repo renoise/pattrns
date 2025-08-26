@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ColorChoice::Auto,
     )
     .unwrap_or_else(|err| {
-        log::error!("init_logger error: {:?}", err);
+        log::error!("init_logger error: {err:?}");
     });
 
     // preload samples
@@ -189,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]),
     );
 
-    // arrange rhytms into phrases and sequence up these phrases to create a litte arrangement
+    // arrange rhythms into phrases and sequence up these phrases to create a little arrangement
     let mut sequence = Sequence::new(
         beat_time,
         vec![
