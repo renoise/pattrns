@@ -43,7 +43,7 @@ phonic = { version = "^0.7", default-features = false, optional = true }
 pretty_assertions = "^1.4"
 notify = { version = "^8.0" }
 ctrlc = { version = "^3.4" }
-criterion = { version = "^0.6" }
+criterion = { version = "^0.7" }
 simplelog = { version = "^0.12" }
 
 [patch.crates-io]
