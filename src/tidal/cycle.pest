@@ -4,9 +4,9 @@
 // define whitespaces as space, tab, non-breaking space and newlines
 WHITESPACE = _{ " " | "\t" | "\u{A0}" | NEWLINE }
 
-/// numbers types allowing [ "1" "1.0" "1." ".1" "0x1a" "0xFF" ]
+/// numbers types allowing [ "10" "10.0" "10." ".10" "0x1a" "0xFF" ]
 integer   = @{ "-"? ~ ((("0x" | "0X") ~ ASCII_HEX_DIGIT+) | ASCII_DIGIT+) }
-float     = @{ "-"? ~ (ASCII_DIGIT ~ "." ~ ASCII_DIGIT*) | ("." ~ ASCII_DIGIT+) }
+float     = @{ "-"? ~ (ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT*) | ("." ~ ASCII_DIGIT+) }
 number    = ${ (float | integer) ~ !ASCII_ALPHA }
 
 /// case-insensitive pitch type with note, optional octave and sharp or flat mark
