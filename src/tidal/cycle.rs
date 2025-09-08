@@ -2806,7 +2806,7 @@ mod test {
         )?;
 
         assert_eq!(
-            Cycle::from("a:1 b:v0.1:v1.0:p1.0")?.generate()?,
+            Cycle::from("a:1 b:v0.1:v1.0:p1.0:g100.0")?.generate()?,
             [[
                 Event::at(Fraction::from(0), Fraction::new(1, 2))
                     .with_note(9, 4)
@@ -2817,6 +2817,7 @@ mod test {
                         Target::Named("v".into(), Some(0.1)),
                         // second v should not be applied
                         Target::Named("p".into(), Some(1.0)),
+                        Target::Named("g".into(), Some(100.0)),
                     ])
             ]]
         );
@@ -3166,6 +3167,12 @@ mod test {
             "[1 2 3 4]:v=[0.2 0.3 0.4 p.8]",
             "[1 2 3 4]:[v0.2 v0.3 v0.4 p.8]",
         )?;
+
+        assert_cycle_equality(
+            "[1 2 3 4]:g=[0.1 10.]",
+            "[1 2 3 4]:[g0.1 g10.]",
+        )?;
+
         Ok(())
     }
 }
