@@ -11,13 +11,12 @@ pattrns = { path = "../..", default-features = false, features = [
     "scripting",
     "lua",
     "player",
-    "sokol-output"
-]}
-serde = { version = "^1.0", features = ["derive"]}
+    "web-output",
+] }
+emscripten_rs_sys = { version = "^0.1" }
+serde = { version = "^1.0", features = ["derive"] }
 serde_json = { version = "^1.0" }
 
 [patch.crates-io]
-# we need a custom patched version with -pthread support
-lua-src = { git = 'https://github.com/emuell/lua-src-rs', tag = "mlua_v0.11.3" } 
-# tagged sokol versions are outdated: use latest version 
-sokol = { version="*", optional = true, git="https://github.com/emuell/sokol-rust" }
+# custom patched version with pthread support
+lua-src = { git = 'https://github.com/emuell/lua-src-rs', tag = "mlua_v0.11.3" }

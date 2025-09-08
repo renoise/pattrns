@@ -4,19 +4,10 @@ use std::{
     cell::RefCell, collections::HashMap, ffi, fs, path::Path, rc::Rc, sync::Arc, time::Duration,
 };
 
+use emscripten_rs_sys::{emscripten_request_animation_frame_loop, emscripten_run_script};
 use serde::ser::SerializeStruct;
 
 use pattrns::prelude::*;
-
-// Externally defined emscripten runtime functions
-extern "C" {
-    fn emscripten_cancel_animation_frame(requestAnimationFrameId: ffi::c_long);
-    fn emscripten_request_animation_frame_loop(
-        func: unsafe extern "C" fn(ffi::c_double, *mut ffi::c_void) -> ffi::c_int,
-        user_data: *mut ffi::c_void,
-    ) -> ffi::c_long;
-    fn emscripten_run_script(script: *const ffi::c_char);
-}
 
 // -------------------------------------------------------------------------------------------------
 
@@ -145,7 +136,6 @@ struct Playground {
     playing_notes: Vec<PlayingNote>,
     output_start_sample_time: u64,
     emitted_sample_time: u64,
-    run_frame_id: ffi::c_long,
 }
 
 impl Playground {
@@ -212,9 +202,9 @@ impl Playground {
         let emitted_sample_time = 0;
 
         // install emscripten frame timer
-        let run_frame_id = unsafe {
+        unsafe {
             println!("Start running...");
-            emscripten_request_animation_frame_loop(Self::run_frame, std::ptr::null_mut())
+            emscripten_request_animation_frame_loop(Some(Self::run_frame), std::ptr::null_mut())
         };
 
         Ok(Self {
@@ -235,7 +225,6 @@ impl Playground {
             instrument_id,
             output_start_sample_time,
             emitted_sample_time,
-            run_frame_id,
         })
     }
 
@@ -461,13 +450,13 @@ impl Playground {
 
     /// Emscripten animation frame callback that drives the audio playback.
     /// Returns 1 to continue running or 0 to stop if Playground is not available.
-    extern "C" fn run_frame(_time: ffi::c_double, _user_data: *mut ffi::c_void) -> ffi::c_int {
+    extern "C" fn run_frame(_time: f64, _user_data: *mut ffi::c_void) -> bool {
         PLAYGROUND.with_borrow_mut(|player| {
             if let Some(playground) = player {
                 playground.run();
-                1 // continue
+                true // continue
             } else {
-                0 // stop
+                false // stop
             }
         })
     }
@@ -730,17 +719,6 @@ impl Playground {
             }))
         } else {
             None
-        }
-    }
-}
-
-impl Drop for Playground {
-    /// Cleanup on Playground destruction.
-    /// Stops the animation frame loop to prevent callbacks after destruction.
-    fn drop(&mut self) {
-        println!("Stopping run loop...");
-        unsafe {
-            emscripten_cancel_animation_frame(self.run_frame_id);
         }
     }
 }

@@ -35,8 +35,7 @@ mlua = { version = "^0.11", default-features = false, features = [
 # optional -> player
 crossbeam-channel = { version = "^0.5", optional = true }
 dashmap = { version = "^6.1", optional = true }
-phonic = { version = "^0.7", default-features = false, optional = true }
-# phonic = { path = "../phonic", default-features = false, optional = true }
+phonic = { version = "^0.10", default-features = false, optional = true }
 
 # dev dependencies
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
@@ -45,10 +44,6 @@ notify = { version = "^8.0" }
 ctrlc = { version = "^3.4" }
 criterion = { version = "^0.7" }
 simplelog = { version = "^0.12" }
-
-[patch.crates-io]
-# tagged sokol versions are outdated: use latest version 
-sokol = { version="*", optional = true, git="https://github.com/emuell/sokol-rust" }
 
 # enable debug symbols in all builds
 [profile.dev]
@@ -65,7 +60,7 @@ dhat-profiler = ["dhat"]
 # example player implementation
 player = ["crossbeam-channel", "dashmap", "phonic"]
 # example player's audio output driver 
-sokol-output = ["phonic/sokol-output"]
+web-output = ["phonic/web-output"]
 cpal-output = ["phonic/cpal-output"]
 
 # lua scripting

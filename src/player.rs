@@ -16,9 +16,9 @@ use dashmap::DashMap;
 use crossbeam_channel::Sender;
 
 use phonic::{
-    utils::speed_from_note, DefaultOutputDevice, Error, FilePlaybackOptions, OutputDevice,
-    PlaybackId, PlaybackStatusContext, PlaybackStatusEvent, Player as PhonicPlayer,
-    PreloadedFileSource,
+    sources::PreloadedFileSource, utils::speed_from_note, DefaultOutputDevice, Error,
+    FilePlaybackOptions, PlaybackId, PlaybackStatusContext, PlaybackStatusEvent,
+    Player as PhonicPlayer,
 };
 
 use crate::{
@@ -176,13 +176,13 @@ impl SamplePlayer {
     ///
     /// # Errors
     /// returns an error if the player could not be created.
-    pub fn new(
+    pub fn new<S: Into<Option<Sender<PlaybackStatusEvent>>>>(
         sample_pool: Arc<SamplePool>,
-        playback_status_sender: Option<Sender<PlaybackStatusEvent>>,
+        playback_status_sender: S,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // create player
         let audio_output = DefaultOutputDevice::open()?;
-        let player = PhonicPlayer::new(audio_output.sink(), playback_status_sender);
+        let player = PhonicPlayer::new(audio_output, playback_status_sender);
         let playing_notes = Vec::new();
         let new_note_action = NewNoteAction::default();
         let sample_root_note = Note::C5;
@@ -262,7 +262,7 @@ impl SamplePlayer {
     /// Stop all currently playing back sources in the given pattern slot index.
     pub fn stop_sources_in_pattern_slot(&mut self, pattern_index: usize) {
         for (playback_id, _) in self.playing_notes[pattern_index].values() {
-            let _ = self.player.stop_source(*playback_id);
+            let _ = self.player.stop_source(*playback_id, None);
         }
         self.playing_notes[pattern_index].clear();
     }
@@ -401,10 +401,9 @@ impl SamplePlayer {
                         && self.new_note_action != NewNoteAction::Continue)
                 {
                     if let Some((playback_id, _)) = playing_notes_in_pattern.get(&voice_index) {
-                        let _ = self.player.stop_source_at_sample_time(
-                            *playback_id,
-                            time_offset + pattern_event.time,
-                        );
+                        let _ = self
+                            .player
+                            .stop_source(*playback_id, time_offset + pattern_event.time);
                         playing_notes_in_pattern.remove(&voice_index);
                     }
                 }
