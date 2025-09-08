@@ -16,14 +16,21 @@ use dashmap::DashMap;
 use crossbeam_channel::Sender;
 
 use phonic::{
-    utils::speed_from_note, DefaultOutputDevice, Error, FilePlaybackOptions, OutputDevice,
-    PlaybackId, PlaybackStatusContext, PlaybackStatusEvent, Player as PhonicPlayer,
-    PreloadedFileSource,
+    sources::PreloadedFileSource, utils::speed_from_note, DefaultOutputDevice, Error,
+    FilePlaybackOptions, PlaybackId, PlaybackStatusContext, PlaybackStatusEvent,
+    Player as PhonicPlayer,
 };
 
 use crate::{
     time::{SampleTimeBase, SampleTimeDisplay},
     BeatTimeBase, Event, InstrumentId, Note, PatternEvent, SampleTime, Sequence,
+};
+
+// -------------------------------------------------------------------------------------------------
+
+/// [`phonic`](https://crates.io/crates/phonic) effects.
+pub use phonic::{
+    effects, Effect, EffectId, EffectMessage, EffectMessagePayload, EffectTime, MixerId,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -39,15 +46,22 @@ const PLAYBACK_PRELOAD_SECONDS: f64 = 0.5;
 // -------------------------------------------------------------------------------------------------
 
 /// Preloads a set of sample files and stores them in a DashMap as [`PreloadedFileSource`]
-/// for later use. Pool usually will be held in an Arc, so it can be read from the sequencer
-/// thread, while it also can be updated from some other thread such as the main thread.
+/// for later use.
+///
+/// Pool usually will be held in an Arc, so it can be read from the sequencer thread, while it
+/// also can be updated from some other thread such as the main thread.
 ///
 /// When files are accessed, the already cached file sources are cloned, which avoids loading
 /// and decoding the files again while playback. Cloned [`PreloadedFileSource`] are using a
 /// shared buffer, so cloning is very cheap.
+///
+/// The pool also memorizes default mixer_ids for [`SamplePlayer`] so samples in the pool can
+/// be assigned to different mixers (DSP effect chains) as well.
+
 #[derive(Default)]
 pub struct SamplePool {
     pool: DashMap<InstrumentId, PreloadedFileSource>,
+    routing: DashMap<InstrumentId, MixerId>,
 }
 
 impl SamplePool {
@@ -55,6 +69,7 @@ impl SamplePool {
     pub fn new() -> Self {
         Self {
             pool: DashMap::new(),
+            routing: DashMap::new(),
         }
     }
 
@@ -62,7 +77,7 @@ impl SamplePool {
     ///
     /// ### Errors
     /// Returns an error if the instrument id is unknown.
-    pub fn get_sample(
+    pub fn sample(
         &self,
         id: InstrumentId,
         playback_options: FilePlaybackOptions,
@@ -101,15 +116,30 @@ impl SamplePool {
         Ok(id)
     }
 
-    /// Clears all preloaded samples from the pool.
+    /// Get a single default instrument routing or None when there was none set.
+    pub fn target_mixer(&self, instrument: InstrumentId) -> Option<MixerId> {
+        self.routing.get(&instrument).map(|m| *m)
+    }
+
+    /// Set or unset a single new default instrument routing.
+    pub fn set_target_mixer(&self, instrument: InstrumentId, mixer_id: Option<MixerId>) {
+        if let Some(mixer_id) = mixer_id {
+            self.routing.insert(instrument, mixer_id);
+        } else {
+            self.routing.remove(&instrument);
+        }
+    }
+
+    /// Clears all preloaded samples and routings from the pool.
     ///
     /// ### Panics
     /// Panics if the sample pool can not be accessed
     pub fn clear(&self) {
         self.pool.clear();
+        self.routing.clear();
     }
 
-    /// Generate a new unique instrument id.
+    // Generate a new unique instrument id.
     fn unique_id() -> InstrumentId {
         static ID: AtomicUsize = AtomicUsize::new(0);
         InstrumentId::from(ID.fetch_add(1, Ordering::Relaxed))
@@ -118,7 +148,7 @@ impl SamplePool {
 
 // -------------------------------------------------------------------------------------------------
 
-/// Behaviour when playing a new note on the same voice channel.
+/// Sample player's behavior when playing a new note on the same voice channel.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum NewNoteAction {
     /// Continue playing the old note and start a new one.
@@ -155,12 +185,17 @@ impl SamplePlaybackContext {
 
 // -------------------------------------------------------------------------------------------------
 
-/// A simple example player implementation, which plays back a `Sequence` via the `phonic` crate
-/// using the default audio output device using plain samples loaded from a file as instruments.
+/// A simple example player implementation as wrapper around [`phonic`](https://crates.io/crates/phonic),
+/// which plays back a [`Sequence`] using the default audio output device, using plain samples loaded
+/// from a file as instruments.
 ///
-/// Works on an existing sample pool, which can be used outside of the player as well.
+/// Uses an existing, shared sample pool, so the pool can also be maintained outside of the player.
+/// To add/remove samples, see [`SamplePool`].
+///
+/// To use DSP effects, use the [`Self::inner_mut`] function to access the underlying phonic player
+/// and use the [`SamplePool::set_target_mixer`] to route specific samples though specific mixers.  
 pub struct SamplePlayer {
-    player: PhonicPlayer,
+    inner: PhonicPlayer,
     sample_pool: Arc<SamplePool>,
     playing_notes: Vec<HashMap<usize, (PlaybackId, Note)>>,
     new_note_action: NewNoteAction,
@@ -176,22 +211,22 @@ impl SamplePlayer {
     ///
     /// # Errors
     /// returns an error if the player could not be created.
-    pub fn new(
+    pub fn new<S: Into<Option<Sender<PlaybackStatusEvent>>>>(
         sample_pool: Arc<SamplePool>,
-        playback_status_sender: Option<Sender<PlaybackStatusEvent>>,
+        playback_status_sender: S,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // create player
         let audio_output = DefaultOutputDevice::open()?;
-        let player = PhonicPlayer::new(audio_output.sink(), playback_status_sender);
+        let inner = PhonicPlayer::new(audio_output, playback_status_sender);
         let playing_notes = Vec::new();
         let new_note_action = NewNoteAction::default();
         let sample_root_note = Note::C5;
         let playback_pos_emit_rate = Duration::from_secs(1);
         let show_events = false;
-        let playback_sample_time = player.output_sample_frame_position();
+        let playback_sample_time = inner.output_sample_frame_position();
         let emitted_sample_time = 0;
         Ok(Self {
-            player,
+            inner,
             sample_pool,
             playing_notes,
             new_note_action,
@@ -203,12 +238,18 @@ impl SamplePlayer {
         })
     }
 
-    /// Access to our file player.
-    pub fn file_player(&self) -> &PhonicPlayer {
-        &self.player
+    /// Access to the player's inner phonic instance.
+    pub fn inner(&self) -> &PhonicPlayer {
+        &self.inner
     }
-    pub fn file_player_mut(&mut self) -> &mut PhonicPlayer {
-        &mut self.player
+    /// Mutable access to the player's inner phonic instance.
+    pub fn inner_mut(&mut self) -> &mut PhonicPlayer {
+        &mut self.inner
+    }
+
+    /// Return the output backend's sample rate. All sources will be played back at this rate.
+    pub fn sample_rate(&self) -> u32 {
+        self.inner.output_sample_rate()
     }
 
     /// true when events are dumped to stdout while playing them.
@@ -228,11 +269,11 @@ impl SamplePlayer {
         self.playback_pos_emit_rate = emit_rate;
     }
 
-    /// get current new note action behaviour.
+    /// get current new note action behavior.
     pub fn new_note_action(&self) -> NewNoteAction {
         self.new_note_action
     }
-    // set a new new note action behaviour.
+    // set a new new note action behavior.
     pub fn set_new_note_action(&mut self, action: NewNoteAction) {
         self.new_note_action = action;
     }
@@ -246,14 +287,9 @@ impl SamplePlayer {
         self.sample_root_note = root_note;
     }
 
-    // set a new global volume factor.
-    pub fn set_global_volume(&mut self, volume: f32) {
-        self.player.set_output_volume(volume)
-    }
-
     /// Stop all currently playing back sources.
     pub fn stop_all_sources(&mut self) {
-        let _ = self.player.stop_all_sources();
+        let _ = self.inner.stop_all_sources();
         for notes in &mut self.playing_notes {
             notes.clear();
         }
@@ -262,7 +298,7 @@ impl SamplePlayer {
     /// Stop all currently playing back sources in the given pattern slot index.
     pub fn stop_sources_in_pattern_slot(&mut self, pattern_index: usize) {
         for (playback_id, _) in self.playing_notes[pattern_index].values() {
-            let _ = self.player.stop_source(*playback_id);
+            let _ = self.inner.stop_source(*playback_id, None);
         }
         self.playing_notes[pattern_index].clear();
     }
@@ -302,7 +338,7 @@ impl SamplePlayer {
             // calculate emitted and playback time differences
             let seconds_emitted = time_base.samples_to_seconds(self.emitted_sample_time);
             let seconds_played = time_base.samples_to_seconds(
-                self.player.output_sample_frame_position() - self.playback_sample_time,
+                self.inner.output_sample_frame_position() - self.playback_sample_time,
             );
             let seconds_to_emit = seconds_played - seconds_emitted + PLAYBACK_PRELOAD_SECONDS * 2.0;
             // run sequence ahead of player up to PRELOAD_SECONDS
@@ -401,10 +437,9 @@ impl SamplePlayer {
                         && self.new_note_action != NewNoteAction::Continue)
                 {
                     if let Some((playback_id, _)) = playing_notes_in_pattern.get(&voice_index) {
-                        let _ = self.player.stop_source_at_sample_time(
-                            *playback_id,
-                            time_offset + pattern_event.time,
-                        );
+                        let _ = self
+                            .inner
+                            .stop_source(*playback_id, time_offset + pattern_event.time);
                         playing_notes_in_pattern.remove(&voice_index);
                     }
                 }
@@ -428,13 +463,13 @@ impl SamplePlayer {
                         }
                         NewNoteAction::Off(duration) => duration,
                     };
+                    playback_options.target_mixer = self.sample_pool.target_mixer(instrument);
 
-                    let playback_sample_rate = self.player.output_sample_rate();
-                    if let Ok(sample) = self.sample_pool.get_sample(
-                        instrument,
-                        playback_options,
-                        playback_sample_rate,
-                    ) {
+                    let playback_sample_rate = self.inner.output_sample_rate();
+                    if let Ok(sample) =
+                        self.sample_pool
+                            .sample(instrument, playback_options, playback_sample_rate)
+                    {
                         let sample_delay =
                             (note_event.delay * pattern_event.duration as f32) as SampleTime;
                         let start_time = Some(time_offset + pattern_event.time + sample_delay);
@@ -446,7 +481,7 @@ impl SamplePlayer {
                             }));
 
                         let playback_id = self
-                            .player
+                            .inner
                             .play_file_source_with_context(sample, start_time, context)
                             .expect("Failed to play file source");
 
@@ -465,11 +500,11 @@ impl SamplePlayer {
         self.playing_notes
             .resize(sequence.phrase_pattern_slot_count(), HashMap::new());
         // stop whatever is playing in case we're restarting
-        self.player
+        self.inner
             .stop_all_sources()
             .expect("failed to stop all playing samples");
         // fetch player's actual position and use it as start offset
-        self.playback_sample_time = self.player.output_sample_frame_position();
+        self.playback_sample_time = self.inner.output_sample_frame_position();
         self.emitted_sample_time = 0;
     }
 }

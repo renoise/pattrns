@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // define our time bases
     let second_time = SecondTimeBase {
-        samples_per_sec: player.file_player().output_sample_rate(),
+        samples_per_sec: player.sample_rate(),
     };
     let beat_time = BeatTimeBase {
         beats_per_min: 130.0,

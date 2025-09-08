@@ -4,19 +4,10 @@ use std::{
     cell::RefCell, collections::HashMap, ffi, fs, path::Path, rc::Rc, sync::Arc, time::Duration,
 };
 
+use emscripten_rs_sys::{emscripten_request_animation_frame_loop, emscripten_run_script};
 use serde::ser::SerializeStruct;
 
 use pattrns::prelude::*;
-
-// Externally defined emscripten runtime functions
-extern "C" {
-    fn emscripten_cancel_animation_frame(requestAnimationFrameId: ffi::c_long);
-    fn emscripten_request_animation_frame_loop(
-        func: unsafe extern "C" fn(ffi::c_double, *mut ffi::c_void) -> ffi::c_int,
-        user_data: *mut ffi::c_void,
-    ) -> ffi::c_long;
-    fn emscripten_run_script(script: *const ffi::c_char);
-}
 
 // -------------------------------------------------------------------------------------------------
 
@@ -145,7 +136,6 @@ struct Playground {
     playing_notes: Vec<PlayingNote>,
     output_start_sample_time: u64,
     emitted_sample_time: u64,
-    run_frame_id: ffi::c_long,
 }
 
 impl Playground {
@@ -190,7 +180,7 @@ impl Playground {
         let time_base = BeatTimeBase {
             beats_per_min: 120.0,
             beats_per_bar: 4,
-            samples_per_sec: player.file_player().output_sample_rate(),
+            samples_per_sec: player.sample_rate(),
         };
         let time_base_changed = false;
 
@@ -208,13 +198,13 @@ impl Playground {
         let instrument_id = samples.first().map(|e| e.id);
 
         // playback time
-        let output_start_sample_time = player.file_player().output_sample_frame_position();
+        let output_start_sample_time = player.inner().output_sample_frame_position();
         let emitted_sample_time = 0;
 
         // install emscripten frame timer
-        let run_frame_id = unsafe {
+        unsafe {
             println!("Start running...");
-            emscripten_request_animation_frame_loop(Self::run_frame, std::ptr::null_mut())
+            emscripten_request_animation_frame_loop(Some(Self::run_frame), std::ptr::null_mut())
         };
 
         Ok(Self {
@@ -235,7 +225,6 @@ impl Playground {
             instrument_id,
             output_start_sample_time,
             emitted_sample_time,
-            run_frame_id,
         })
     }
 
@@ -309,7 +298,7 @@ impl Playground {
                 .time_base
                 .seconds_to_samples(Self::PLAYBACK_PRELOAD_SECONDS);
             self.output_start_sample_time =
-                self.player.file_player().output_sample_frame_position() + preload_offset;
+                self.player.inner().output_sample_frame_position() + preload_offset;
             self.emitted_sample_time = 0;
             // reset sequence
             if let Some(sequence) = self.sequence.as_mut() {
@@ -322,18 +311,18 @@ impl Playground {
 
     /// Stops all currently playing audio sources and resets the sequence.
     pub fn stop_playing(&mut self) {
-        let _ = self.player.file_player_mut().stop_all_sources();
+        let _ = self.player.stop_all_sources();
         self.playing = false;
     }
 
     /// Stops all currently playing audio sources.
     pub fn stop_playing_notes(&mut self) {
-        let _ = self.player.file_player_mut().stop_all_sources();
+        let _ = self.player.stop_all_sources();
     }
 
     /// Set global playback volume.
     pub fn set_volume(&mut self, volume: f32) {
-        self.player.set_global_volume(volume);
+        self.player.inner_mut().set_output_volume(volume);
     }
 
     /// Handle incoming MIDI note on event
@@ -341,8 +330,7 @@ impl Playground {
         assert!(note as usize <= Self::NUM_MIDI_NOTES);
         if self.playing_notes.is_empty() || self.pattern_slot(note as usize).is_none() {
             // reset play head
-            self.output_start_sample_time =
-                self.player.file_player().output_sample_frame_position();
+            self.output_start_sample_time = self.player.inner().output_sample_frame_position();
             self.emitted_sample_time = 0;
             // memorize playing note
             let new_note = PlayingNote {
@@ -461,13 +449,13 @@ impl Playground {
 
     /// Emscripten animation frame callback that drives the audio playback.
     /// Returns 1 to continue running or 0 to stop if Playground is not available.
-    extern "C" fn run_frame(_time: ffi::c_double, _user_data: *mut ffi::c_void) -> ffi::c_int {
+    extern "C" fn run_frame(_time: f64, _user_data: *mut ffi::c_void) -> bool {
         PLAYGROUND.with_borrow_mut(|player| {
             if let Some(playground) = player {
                 playground.run();
-                1 // continue
+                true // continue
             } else {
-                0 // stop
+                false // stop
             }
         })
     }
@@ -494,13 +482,13 @@ impl Playground {
         );
 
         // check if audio output has been suspended by the browser
-        let suspended = self.player.file_player().output_suspended();
+        let suspended = self.player.inner().output_suspended();
 
         // run the player, when playing and audio output is not suspended
         if !suspended && (self.playing || !self.playing_notes.is_empty()) {
             // calculate emitted and playback time differences
             let time_base = self.time_base;
-            let output_sample_time = self.player.file_player().output_sample_frame_position();
+            let output_sample_time = self.player.inner().output_sample_frame_position();
             let samples_played = // can be be negative, because we start with a preload offset 
                 (output_sample_time as i64 - self.output_start_sample_time as i64).max(0) as u64;
             let seconds_played = time_base.samples_to_seconds(samples_played);
@@ -730,17 +718,6 @@ impl Playground {
             }))
         } else {
             None
-        }
-    }
-}
-
-impl Drop for Playground {
-    /// Cleanup on Playground destruction.
-    /// Stops the animation frame loop to prevent callbacks after destruction.
-    fn drop(&mut self) {
-        println!("Stopping run loop...");
-        unsafe {
-            emscripten_cancel_animation_frame(self.run_frame_id);
         }
     }
 }

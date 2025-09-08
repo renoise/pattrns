@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let beat_time = BeatTimeBase {
         beats_per_min: 124.0,
         beats_per_bar: 4,
-        samples_per_sec: player.file_player().output_sample_rate(),
+        samples_per_sec: player.sample_rate(),
     };
 
     // Watch for script changes, signaling in 'script_files_changed'
