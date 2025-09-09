@@ -86,7 +86,11 @@
 ### delay([*self*](../API/builtins/self.md), delay : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="delay"></a>
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
-> Set the delay attribute of all notes to the specified value or values.  
+> Set the delay attribute of all notes to the specified value or values.
+### glide([*self*](../API/builtins/self.md), glide : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="glide"></a>
+`->`[`Sequence`](../API/sequence.md#Sequence)  
+
+> Set the glide attribute of all notes to the specified value or values.  
 
 
 
