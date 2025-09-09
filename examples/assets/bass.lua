@@ -1,18 +1,1 @@
--- local scale = scale("c5", {0,1,3,5,7,9,11})
-local scale = scale("c5", "natural minor")
-
-return pattern {
-  unit = "1/8",
-  pulse = pulse.from({ 1, 0.5, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 1, 0 }, { 0, 1, 0, 1 }),
-  gate = function(context)
-    return context.pulse_value == 1.0
-  end,
-  event = pulse.from(1, 3, 4, 1, 3, 4, -7):map(function(index, value)
-    if value < 0 then
-      return { key = scale.notes[-value] - 12, volume = 0.7 }
-    else
-      return { key = scale.notes[value], volume = 0.7 }
-    end
-  end
-  )
-}
+return cycle "[C5 ~ D#5:v0.5 _ _ F5:g99.0:v0.5 _ <~ A#4:<g24.0 _>>:v0.6]"
