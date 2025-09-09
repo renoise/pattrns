@@ -14,9 +14,10 @@
 >  attributes:
 > ```md
 >  -'#' -> instrument (integer > 0)
->  -'v' -> volume (number in range [0-1])
->  -'p' -> panning (number in range [-1-1])
->  -'d' -> delay (number in range [0-1])
+>  -'v' -> volume (number in range [0-1] - zero to full volume)
+>  -'p' -> panning (number in range [-1-1] - full left to full right)
+>  -'d' -> delay (number in range [0-1] - delay in time base units)
+>  -'g' -> glide (number in range [0-INF] - semitones per second)
 > ```
 > 
 > #### examples:
@@ -110,7 +111,11 @@
 ### delay([*self*](../API/builtins/self.md), delay : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="delay"></a>
 `->`[`Note`](../API/note.md#Note)  
 
-> Set the note's delay attribute to the specified value or values.  
+> Set the note's delay attribute to the specified value or values.
+### glide([*self*](../API/builtins/self.md), glide : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="glide"></a>
+`->`[`Note`](../API/note.md#Note)  
+
+> Set the note's glide attribute to the specified value or values.  
 
 
 

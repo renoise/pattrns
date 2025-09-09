@@ -97,6 +97,7 @@ impl IntoLua for NoteEvent {
         table.set("volume", self.volume as f64)?;
         table.set("panning", self.panning as f64)?;
         table.set("delay", self.delay as f64)?;
+        table.set("glide", self.glide as f64)?;
         Ok(LuaValue::Table(table))
     }
 }
@@ -309,6 +310,14 @@ pub(crate) fn delay_array_from_value(
     float_array_from_value(lua, value, array_len, "delay", 0.0..=1.0)
 }
 
+pub(crate) fn glide_array_from_value(
+    lua: &Lua,
+    value: LuaValue,
+    array_len: usize,
+) -> LuaResult<Vec<f32>> {
+    float_array_from_value(lua, value, array_len, "glide", 0.0..)
+}
+
 // ---------------------------------------------------------------------------------------------
 
 fn float_value_from_table<Range>(
@@ -378,6 +387,10 @@ pub(crate) fn delay_value_from_table(table: &LuaTable) -> LuaResult<f32> {
     float_value_from_table(table, "delay", 0.0..1.0, 0.0)
 }
 
+pub(crate) fn glide_value_from_table(table: &LuaTable) -> LuaResult<f32> {
+    float_value_from_table(table, "glide", 0.0.., 0.0)
+}
+
 fn float_value_from_string<Range>(
     str: &str,
     name: &'static str,
@@ -445,6 +458,10 @@ pub(crate) fn delay_value_from_string(str: &str) -> LuaResult<f32> {
     float_value_from_string(str, "delay", 0.0..1.0, 0.0)
 }
 
+pub(crate) fn glide_value_from_string(str: &str) -> LuaResult<f32> {
+    float_value_from_string(str, "glide", 0.0.., 0.0)
+}
+
 // -------------------------------------------------------------------------------------------------
 
 pub(crate) fn is_empty_note_string(s: &str) -> bool {
@@ -507,6 +524,7 @@ pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> 
         let mut volume = 1.0;
         let mut panning = 0.0;
         let mut delay = 0.0;
+        let mut glide = 0.0;
         for split in white_space_splits {
             if let Some(instrument_str) = split.strip_prefix('#') {
                 instrument = instrument_value_from_string(instrument_str)?;
@@ -516,14 +534,18 @@ pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> 
                 panning = panning_value_from_string(panning_str)?;
             } else if let Some(delay_str) = split.strip_prefix('d') {
                 delay = delay_value_from_string(delay_str)?;
+            } else if let Some(glide_str) = split.strip_prefix('g') {
+                glide = glide_value_from_string(glide_str)?;
             } else {
                 return Err(LuaError::RuntimeError(
-                    format!("invalid note string segment: '{}'. ", split) +
-                        "expecting only number values with '#' (instrument),'v' (volume), 'p' (panning) or 'd' (delay) prefixes here."),
-                );
+                    format!("invalid note property: '{split}'. ")
+                        + "expecting only number values with  "
+                        + "'#' (instrument), 'v' (volume), 'p' (panning), 'd' (delay) or 'g' (glide) "
+                        + "prefixes here.",
+                ));
             }
         }
-        Ok(new_note((note, instrument, volume, panning, delay)))
+        Ok(new_note((note, instrument, volume, panning, delay, glide)))
     }
 }
 
@@ -541,6 +563,7 @@ pub(crate) fn note_event_from_table_map(table: &LuaTable) -> LuaResult<Option<No
         let volume = volume_value_from_table(table)?;
         let panning = panning_value_from_table(table)?;
         let delay = delay_value_from_table(table)?;
+        let glide = glide_value_from_table(table)?;
         // { key = 60, [volume = 1.0, panning = 0.0, delay = 0.0] }
         if let Some(note_value) = key.as_i32() {
             Ok(new_note((
@@ -549,13 +572,14 @@ pub(crate) fn note_event_from_table_map(table: &LuaTable) -> LuaResult<Option<No
                 volume,
                 panning,
                 delay,
+                glide,
             )))
         }
         // { key = "C4", [instrument = 1, volume = 1.0, panning = 0.0, delay = 0.0] }
         else if let Some(note_str) = key.as_string().map(|s| s.to_string_lossy()) {
             let note = Note::try_from(&*note_str)
                 .map_err(|err| LuaError::RuntimeError(err.to_string()))?;
-            Ok(new_note((note, instrument, volume, panning, delay)))
+            Ok(new_note((note, instrument, volume, panning, delay, glide)))
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: key.type_name(),
@@ -658,6 +682,7 @@ pub(crate) fn chord_events_from_string(chord_string: &str) -> LuaResult<Vec<Opti
     let mut volume = 1.0;
     let mut panning = 0.0;
     let mut delay = 0.0;
+    let mut glide = 0.0;
     for split in white_space_splits {
         if let Some(instrument_str) = split.strip_prefix('#') {
             instrument = instrument_value_from_string(instrument_str)?;
@@ -667,11 +692,15 @@ pub(crate) fn chord_events_from_string(chord_string: &str) -> LuaResult<Vec<Opti
             panning = panning_value_from_string(panning_str)?;
         } else if let Some(delay_str) = split.strip_prefix('d') {
             delay = delay_value_from_string(delay_str)?;
+        } else if let Some(glide_str) = split.strip_prefix('g') {
+            glide = glide_value_from_string(glide_str)?;
         } else {
             return Err(LuaError::RuntimeError(
-                    format!("invalid note string segment: '{}'. ", split) +
-                        "expecting only number values with '#' (instrument),'v' (volume), 'p' (panning) or 'd' (delay) prefixes here."),
-                );
+                format!("invalid note property: '{split}'. ")
+                    + "expecting only number values with  "
+                    + "'#' (instrument), 'v' (volume), 'p' (panning), 'd' (delay) or 'g' (glide) "
+                    + "prefixes here.",
+            ));
         }
     }
     Ok(chord
@@ -684,6 +713,7 @@ pub(crate) fn chord_events_from_string(chord_string: &str) -> LuaResult<Vec<Opti
                 volume,
                 panning,
                 delay,
+                glide,
             ))
         })
         .collect::<Vec<_>>())
