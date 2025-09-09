@@ -7,6 +7,7 @@ use super::unwrap::{
 };
 
 use crate::{
+    bindings::unwrap::glide_array_from_value,
     event::{InstrumentId, NoteEvent},
     note::Note,
 };
@@ -161,7 +162,7 @@ impl LuaUserData for SequenceUserData {
                 if !(-1.0..=1.0).contains(&panning) {
                     return Err(bad_argument_error(
                         "panning",
-                        "volume",
+                        "value",
                         1,
                         "panning must be in range [-1.0..=1.0]",
                     ));
@@ -181,13 +182,33 @@ impl LuaUserData for SequenceUserData {
                 if !(0.0..=1.0).contains(&delay) {
                     return Err(bad_argument_error(
                         "delay",
-                        "panning",
+                        "value",
                         1,
                         "delay must be in range [-1.0..=1.0]",
                     ));
                 }
                 for note in notes.iter_mut().flatten() {
                     note.delay = delay;
+                }
+            }
+            drop(this);
+            Ok(ud)
+        });
+
+        methods.add_function("glide", |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
+            let mut this = ud.borrow_mut::<Self>()?;
+            let glides = glide_array_from_value(lua, value, this.notes.len())?;
+            for (notes, glide) in this.notes.iter_mut().zip(glides) {
+                if !(0.0..).contains(&glide) {
+                    return Err(bad_argument_error(
+                        "glide",
+                        "value",
+                        1,
+                        "glide must be in range [0.0..]",
+                    ));
+                }
+                for note in notes.iter_mut().flatten() {
+                    note.glide = glide;
                 }
             }
             drop(this);
@@ -357,6 +378,10 @@ mod test {
             evaluate_sequence_userdata(&lua, r#"sequence({key = "c"}, "d", "f"):delay(0.0)"#)
                 .is_ok()
         );
+        assert!(
+            evaluate_sequence_userdata(&lua, r#"sequence({key = "c"}, "d", "f"):glide(2.0)"#)
+                .is_ok()
+        );
         assert!(evaluate_sequence_userdata(
             &lua, //
             r#"sequence("c", "d", "f"):transpose({1, 2})"#
@@ -372,6 +397,10 @@ mod test {
         );
         assert!(
             evaluate_sequence_userdata(&lua, r#"sequence("c", "d", "f"):delay({0.0, 0.25})"#)
+                .is_ok()
+        );
+        assert!(
+            evaluate_sequence_userdata(&lua, r#"sequence("c", "d", "f"):glide({0.0, 0.5})"#)
                 .is_ok()
         );
         assert!(evaluate_sequence_userdata(
