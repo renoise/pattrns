@@ -19,6 +19,8 @@ Instead of using a string, you can also specify notes via a Lua table with the f
 - `"volume"`  - OPTIONAL - Volume number in range [0.0 - 1.0]
 - `"panning"` - OPTIONAL - Panning factor in range [-1.0 - 1.0] where 0 is center
 - `"delay"` - OPTIONAL - Delay factor in range [0.0 - 1.0]
+- `'glide'` - OPTIONAL -  Glide factor in range [0-INF] as semitones per second
+
 
 » `event = { key = 48, volume = 0.1 }` *a c4 with volume 0.1*
 
@@ -31,10 +33,11 @@ Valid keys are `c,d,e,f,g,a,b`. Valid modifiers are `#` and `b`. Valid octaves a
 
 Other note properties can be specified in the string notation as well.
 
-- `'#'` instrument 
-- `'v'` volume 
-- `'p'` panning
-- `'d'` delay
+- `'#'` instrument (integer >= 0)
+- `'v'` volume (number in range [0-1])
+- `'p'` panning (number in range [-1-1])
+- `'d'` delay (number in range [0-1])
+- `'g'` glide (number in range [0-INF])
 
 » `event = { "f#4 #1 v0.2" }` *emit a f sharp for instrument 1 with volume 0.2*
 

@@ -99,42 +99,45 @@ pub(crate) fn apply_cycle_note_properties(
     for target in targets {
         match target {
             CycleTarget::Index(index) => {
-                let index = integer_value_in_range(
-                    *index,
-                    "instrument",
-                    0..,
-                )?;
+                let index = integer_value_in_range(*index, "instrument", 0..)?;
                 let instrument = InstrumentId::from(index as usize);
                 for note_event in note_events.iter_mut().flatten() {
                     note_event.instrument = Some(instrument);
                 }
             }
-            CycleTarget::Named(name, value) => {
-                match name.as_bytes() {
-                    b"v" => {
-                        let volume = float_value_in_range(value, "volume", 0.0..=1.0)?;
-                        for note_event in note_events.iter_mut().flatten() {
-                            note_event.volume = volume;
-                        }
-                    }
-                    b"p" => {
-                        let panning = float_value_in_range(value, "panning", -1.0..=1.0)?;
-                        for note_event in note_events.iter_mut().flatten() {
-                            note_event.panning = panning;
-                        }
-                    }
-                    b"d" => {
-                        let delay = float_value_in_range(value, "delay", 0.0..1.0)?;
-                        for note_event in note_events.iter_mut().flatten() {
-                            note_event.delay = delay;
-                        }
-                    }
-                    _ => {
-                        return Err(format!("invalid note property: '{}'. ", name) + 
-                            "expecting number values with '#' (instrument),'v' (volume), 'p' (panning) or 'd' (delay) prefixes here.")
+            CycleTarget::Named(name, value) => match name.as_bytes() {
+                b"v" => {
+                    let volume = float_value_in_range(value, "volume", 0.0..=1.0)?;
+                    for note_event in note_events.iter_mut().flatten() {
+                        note_event.volume = volume;
                     }
                 }
-            }
+                b"p" => {
+                    let panning = float_value_in_range(value, "panning", -1.0..=1.0)?;
+                    for note_event in note_events.iter_mut().flatten() {
+                        note_event.panning = panning;
+                    }
+                }
+                b"d" => {
+                    let delay = float_value_in_range(value, "delay", 0.0..1.0)?;
+                    for note_event in note_events.iter_mut().flatten() {
+                        note_event.delay = delay;
+                    }
+                }
+                b"g" => {
+                    let glide = float_value_in_range(value, "glide", 0.0..)?;
+                    for note_event in note_events.iter_mut().flatten() {
+                        note_event.glide = glide;
+                    }
+                }
+                _ => {
+                    return Err(
+                        format!("invalid note property: '{name}'. ")
+                            + "expecting only number values with  "
+                            + "'#' (instrument), 'v' (volume), 'p' (panning), 'd' (delay) or 'g' (glide) "
+                            + "prefixes here.");
+                }
+            },
         }
     }
     Ok(())

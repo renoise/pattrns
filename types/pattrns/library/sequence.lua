@@ -69,6 +69,12 @@ function Sequence:panning(panning) end
 ---@nodiscard
 function Sequence:delay(delay) end
 
+---Set the glide attribute of all notes to the specified value or values.
+---@param glide number|number[]
+---@return Sequence
+---@nodiscard
+function Sequence:glide(glide) end
+
 ----------------------------------------------------------------------------------------------------
 
 ---Create a sequence from an array of note values or note value varargs.
