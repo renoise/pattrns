@@ -158,7 +158,8 @@ mod test {
                     note: Note::C6,
                     volume: 1.0,
                     panning: 0.0,
-                    delay: 0.0
+                    delay: 0.0,
+                    glide: 0.0
                 })])),
                 duration: 11025
             })
@@ -176,6 +177,7 @@ mod test {
             volume: 0.5,
             panning: 0.0,
             delay: 0.25,
+            glide: 0.5,
         })]);
 
         // BeatTimePattern function Context
@@ -196,6 +198,7 @@ mod test {
                         assert(trigger_notes[1].volume == 0.5)
                         assert(trigger_notes[1].panning == 0.0)
                         assert(trigger_notes[1].delay == 0.25)
+                        assert(trigger_notes[1].glide == 0.5)
                         assert(context.pulse_step == pulse_step)
                         assert(context.pulse_time_step == pulse_time_step)
                       end
@@ -277,7 +280,8 @@ mod test {
                     note: Note::C4,
                     volume: 1.0,
                     panning: 0.0,
-                    delay: 0.0
+                    delay: 0.0,
+                    glide: 0.0,
                 })])),
                 duration: 11025,
             })
@@ -304,7 +308,7 @@ mod test {
                     resolution = 2,
                     offset = 3,
                     pulse = {1,0,1,0},
-                    event = {"c5", "c5 v0.4", {"c7", "c7 v1.0"}}
+                    event = {"c5", "c5 v0.4", {"c7", "c7 v1.0 g5"}}
                 }
             "#,
             )
@@ -354,6 +358,7 @@ mod test {
             volume: 0.25,
             panning: 0.5,
             delay: 0.75,
+            glide: 0.0,
         })]);
 
         // SecondTimePattern function Context
@@ -395,7 +400,8 @@ mod test {
                     note: Note::C4,
                     volume: 1.0,
                     panning: 0.0,
-                    delay: 0.0
+                    delay: 0.0,
+                    glide: 0.0
                 })],),),
                 duration: 48
             })

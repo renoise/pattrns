@@ -2,9 +2,9 @@ use mlua::prelude::*;
 
 use super::unwrap::{
     amplify_array_from_value, bad_argument_error, chord_events_from_intervals,
-    chord_events_from_mode, delay_array_from_value, instrument_array_from_value,
-    note_events_from_value, panning_array_from_value, sequence_from_value,
-    transpose_steps_array_from_value, volume_array_from_value,
+    chord_events_from_mode, delay_array_from_value, glide_array_from_value,
+    instrument_array_from_value, note_events_from_value, panning_array_from_value,
+    sequence_from_value, transpose_steps_array_from_value, volume_array_from_value,
 };
 
 use crate::{
@@ -211,6 +211,26 @@ impl LuaUserData for NoteUserData {
             drop(this);
             Ok(ud)
         });
+
+        methods.add_function("glide", |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
+            let mut this = ud.borrow_mut::<Self>()?;
+            let glides = glide_array_from_value(lua, value, this.notes.len())?;
+            for (note, glide) in this.notes.iter_mut().zip(glides.into_iter()) {
+                if !(0.0..).contains(&glide) {
+                    return Err(bad_argument_error(
+                        "glide",
+                        "value",
+                        1,
+                        "glide must be in range [0.0..]",
+                    ));
+                }
+                if let Some(note) = note {
+                    note.glide = glide;
+                }
+            }
+            drop(this);
+            Ok(ud)
+        });
     }
 }
 
@@ -278,10 +298,11 @@ mod test {
         assert!(evaluate_note_userdata(&lua, r#"note("C#1 v-2.0")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("C#1 p-1.0")"#).is_ok());
         assert!(evaluate_note_userdata(&lua, r#"note("C#1 d-1.0")"#).is_err());
-        let note_event = evaluate_note_userdata(&lua, r#"note("C#1 #2 v0.5 p0.1 d0.2")"#)?;
+        assert!(evaluate_note_userdata(&lua, r#"note("C#1 g-1.0")"#).is_err());
+        let note_event = evaluate_note_userdata(&lua, r#"note("C#1 #2 v0.5 p0.1 d0.2 g5")"#)?;
         assert_eq!(
             note_event.notes,
-            vec![new_note((Note::Cs1, InstrumentId::from(2), 0.5, 0.1, 0.2))]
+            vec![new_note((Note::Cs1, InstrumentId::from(2), 0.5, 0.1, 0.2, 5.0))]
         );
         let note_event = evaluate_note_userdata(&lua, r#"note("C#1 d0.2")"#)?;
         assert_eq!(
@@ -352,11 +373,11 @@ mod test {
         assert_eq!(
             evaluate_note_userdata(
                 &lua,
-                r#"note(note("c4 #100 v0.2 p0.3 d0.4", "", "e4").notes)"#
+                r#"note(note("c4 #100 v0.2 p0.3 d0.4 g8", "", "e4").notes)"#
             )?
             .notes,
             vec![
-                new_note(("c4", InstrumentId::from(100), 0.2, 0.3, 0.4)),
+                new_note(("c4", InstrumentId::from(100), 0.2, 0.3, 0.4, 8.0)),
                 None,
                 new_note("e4"),
             ]

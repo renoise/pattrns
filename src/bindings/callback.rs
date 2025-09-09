@@ -671,6 +671,7 @@ mod test {
             volume: 0.5,
             panning: 0.0,
             delay: 0.25,
+            glide: 5.0,
         })]);
         pattern.set_trigger_event(&trigger_event);
 
@@ -680,6 +681,7 @@ mod test {
             volume: 1.0,
             panning: -1.0,
             delay: 0.5,
+            glide: 0.0,
         })]);
         pattern2.set_trigger_event(&trigger_event2);
 
