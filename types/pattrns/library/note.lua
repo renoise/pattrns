@@ -80,6 +80,12 @@ function Note:panning(panning) end
 ---@nodiscard
 function Note:delay(delay) end
 
+---Set the note's glide attribute to the specified value or values.
+---@param glide number|number[]
+---@return Note
+---@nodiscard
+function Note:glide(glide) end
+
 ----------------------------------------------------------------------------------------------------
 
 ---@alias NoteValue Note|NoteTable|string|number|nil
@@ -91,9 +97,10 @@ function Note:delay(delay) end
 --- attributes:
 ---```md
 --- -'#' -> instrument (integer > 0)
---- -'v' -> volume (number in range [0-1])
---- -'p' -> panning (number in range [-1-1])
---- -'d' -> delay (number in range [0-1])
+--- -'v' -> volume (number in range [0-1] - zero to full volume)
+--- -'p' -> panning (number in range [-1-1] - full left to full right)
+--- -'d' -> delay (number in range [0-1] - delay in units)
+--- -'g' -> glide (number in range [0-INF] - semitones per second)
 ---```
 ---
 ---### examples:
