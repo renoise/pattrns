@@ -18,6 +18,6 @@ serde_json = { version = "^1.0" }
 
 [patch.crates-io]
 # we need a custom patched version with -pthread support
-lua-src = { git = 'https://github.com/emuell/lua-src-rs' } 
+lua-src = { git = 'https://github.com/emuell/lua-src-rs', tag = "mlua_v0.11.3" } 
 # tagged sokol versions are outdated: use latest version 
 sokol = { version="*", optional = true, git="https://github.com/emuell/sokol-rust" }
