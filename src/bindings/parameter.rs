@@ -18,6 +18,8 @@ impl LuaUserData for ParameterUserData {}
 mod test {
     use crate::bindings::*;
 
+    // use pretty_assertions::assert_eq;
+
     fn new_test_engine() -> LuaResult<Lua> {
         // create a new engine and register bindings
         let (mut lua, mut timeout_hook) = new_engine()?;

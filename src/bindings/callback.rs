@@ -554,6 +554,8 @@ mod test {
         },
     };
 
+    use pretty_assertions::assert_eq;
+
     fn new_test_engine(
         beats_per_min: f32,
         beats_per_bar: u32,
@@ -668,20 +670,20 @@ mod test {
         let trigger_event = Event::NoteEvents(vec![Some(NoteEvent {
             note: Note::A4,
             instrument: None,
+            glide: Some(5.0),
             volume: 0.5,
             panning: 0.0,
             delay: 0.25,
-            glide: 5.0,
         })]);
         pattern.set_trigger_event(&trigger_event);
 
         let trigger_event2 = Event::NoteEvents(vec![Some(NoteEvent {
             note: Note::C4,
             instrument: None,
+            glide: None,
             volume: 1.0,
             panning: -1.0,
             delay: 0.5,
-            glide: 0.0,
         })]);
         pattern2.set_trigger_event(&trigger_event2);
 
