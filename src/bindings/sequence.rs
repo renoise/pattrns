@@ -199,13 +199,15 @@ impl LuaUserData for SequenceUserData {
             let mut this = ud.borrow_mut::<Self>()?;
             let glides = glide_array_from_value(lua, value, this.notes.len())?;
             for (notes, glide) in this.notes.iter_mut().zip(glides) {
-                if !(0.0..).contains(&glide) {
-                    return Err(bad_argument_error(
-                        "glide",
-                        "value",
-                        1,
-                        "glide must be in range [0.0..]",
-                    ));
+                if let Some(glide) = glide {
+                    if !(0.0..).contains(&glide) {
+                        return Err(bad_argument_error(
+                            "glide",
+                            "value",
+                            1,
+                            "glide must be in range [0.0..]",
+                        ));
+                    }
                 }
                 for note in notes.iter_mut().flatten() {
                     note.glide = glide;
@@ -223,6 +225,8 @@ impl LuaUserData for SequenceUserData {
 mod test {
     use super::*;
     use crate::{bindings::*, event::new_note};
+
+    use pretty_assertions::assert_eq;
 
     fn evaluate_sequence_userdata(lua: &Lua, expression: &str) -> LuaResult<SequenceUserData> {
         Ok(lua
@@ -257,9 +261,9 @@ mod test {
         assert_eq!(
             note_sequence_event.notes,
             vec![
-                vec![new_note(("c#1", None, 0.5))],
+                vec![new_note(("c#1", None, None, 0.5))],
                 vec![None],
-                vec![new_note(("g2", None, 1.0))]
+                vec![new_note(("g2", None, None, 1.0))]
             ]
         );
         let poly_note_sequence_event = evaluate_sequence_userdata(
@@ -273,14 +277,14 @@ mod test {
             poly_note_sequence_event.notes,
             vec![
                 vec![
-                    new_note(("c#1", None, 1.0)),
+                    new_note(("c#1", None, None, 1.0)),
                     None,
-                    new_note(("g2", None, 0.75)),
+                    new_note(("g2", None, None, 0.75)),
                 ],
                 vec![
-                    new_note(("a#5", None, 0.2)),
+                    new_note(("a#5", None, None, 0.2)),
                     None,
-                    new_note(("b1", None, 0.1))
+                    new_note(("b1", None, None, 0.1))
                 ]
             ]
         );
@@ -303,9 +307,9 @@ mod test {
             vec![
                 vec![new_note("c4"), new_note("e4"), new_note("g4"),],
                 vec![
-                    new_note(("a#5", None, 0.2)),
+                    new_note(("a#5", None, None, 0.2)),
                     None,
-                    new_note(("b1", None, 0.1))
+                    new_note(("b1", None, None, 0.1))
                 ]
             ]
         );
@@ -345,12 +349,12 @@ mod test {
         assert_eq!(
             evaluate_sequence_userdata(
                 &lua,
-                r#"sequence(sequence{{"c4 #1 v0.2 p0.3 d0.4", "d4"}, {}, {"e4"}}.notes)"#
+                r#"sequence(sequence{{"c4 #1 g0.5 v0.2 p0.3 d0.4", "d4"}, {}, {"e4"}}.notes)"#
             )?
             .notes,
             vec![
                 vec![
-                    new_note(("c4", InstrumentId::from(1), 0.2, 0.3, 0.4)),
+                    new_note(("c4", InstrumentId::from(1), Some(0.5), 0.2, 0.3, 0.4)),
                     new_note("d4"),
                 ],
                 vec![None],
@@ -408,6 +412,19 @@ mod test {
             r#"sequence("c", "d", "f"):volume(1.0):delay({0.0, 0.25})"#
         )
         .is_ok());
+
+        assert_eq!(
+            evaluate_sequence_userdata(
+                &lua,
+                r#"sequence{"c4", "d4", "e4"}:glide({1.0, nil, 2.0})"#
+            )?
+            .notes,
+            vec![
+                vec![new_note(("c4", None, Some(1.0), 1.0, 0.0, 0.0,)),],
+                vec![new_note(("d4", None, None, 1.0, 0.0, 0.0)),],
+                vec![new_note(("e4", None, Some(2.0), 1.0, 0.0, 0.0,)),],
+            ]
+        );
 
         Ok(())
     }

@@ -81,6 +81,9 @@ pub const NO_INSTRUMENT_ID: u32 = u32::MAX;
 /// Parameter change value which refers to an empty, undefined parameter.
 pub const NO_PARAMETER_ID: u32 = u32::MAX;
 
+/// Glide value which refers to an unset, undefined glide value.
+pub const NO_GLIDE_VALUE: f32 = -1.0;
+
 /// Note value which refers to an empty, undefined note.
 pub const EMPTY_NOTE: u8 = 0xFE;
 const_assert_eq!(EMPTY_NOTE, pattrns::Note::EMPTY as u8);
@@ -127,6 +130,7 @@ pub unsafe extern "C" fn drop_error_string(error: *const c_char) {
 pub struct NoteEvent {
     pub note: u8,
     pub instrument: u32,
+    pub glide: f32,
     pub volume: f32,
     pub panning: f32,
     pub delay: f32,
@@ -138,6 +142,7 @@ impl Default for NoteEvent {
         Self {
             note: EMPTY_NOTE,
             instrument: NO_INSTRUMENT_ID,
+            glide: NO_GLIDE_VALUE,
             volume: 1.0,
             panning: 0.0,
             delay: 0.0,
@@ -151,12 +156,14 @@ impl From<&pattrns::NoteEvent> for NoteEvent {
         let instrument = value
             .instrument
             .map_or(NO_INSTRUMENT_ID, |id| usize::from(id) as u32);
+        let glide = value.glide.map_or(NO_GLIDE_VALUE, |value| value);
         let volume = value.volume;
         let panning = value.panning;
         let delay = value.delay;
         Self {
-            instrument,
             note,
+            instrument,
+            glide,
             volume,
             panning,
             delay,
@@ -171,6 +178,10 @@ impl From<&NoteEvent> for pattrns::NoteEvent {
             instrument: match value.instrument {
                 NO_INSTRUMENT_ID => None,
                 _ => Some(pattrns::InstrumentId::from(value.instrument as usize)),
+            },
+            glide: match value.glide {
+                NO_GLIDE_VALUE => None,
+                _ => Some(value.glide),
             },
             volume: value.volume,
             panning: value.panning,

@@ -94,10 +94,12 @@ impl IntoLua for NoteEvent {
                 LuaInteger::try_from(usize::from(instrument)).unwrap_or(LuaInteger::MAX),
             )?;
         }
+        if let Some(glide) = self.glide {
+            table.set("glide", glide as f64)?;
+        }
         table.set("volume", self.volume as f64)?;
         table.set("panning", self.panning as f64)?;
         table.set("delay", self.delay as f64)?;
-        table.set("glide", self.glide as f64)?;
         Ok(LuaValue::Table(table))
     }
 }
@@ -195,6 +197,47 @@ pub(crate) fn sequence_from_table(table: &LuaTable) -> Option<Vec<LuaValue>> {
 }
 
 // ---------------------------------------------------------------------------------------------
+
+fn optional_float_array_from_value<Range>(
+    lua: &Lua,
+    value: LuaValue,
+    array_len: usize,
+    name: &str,
+    range: Range,
+) -> LuaResult<Vec<Option<f32>>>
+where
+    Range: RangeBounds<f32> + std::fmt::Debug,
+{
+    // NB: use pairs instead of sequence values to not stop at nil values in the array
+    let mut values: Vec<Option<f32>> = vec![];
+    if let Some(value_table) = value.as_table() {
+        for value in value_table.pairs::<LuaInteger, LuaValue>() {
+            let (index, value) = value?;
+            if index >= 1 {
+                values.resize(index as usize, None);
+                if value != LuaValue::Nil {
+                    values[index as usize - 1] = Some(f32::from_lua(value, lua)?);
+                }
+            }
+        }
+    } else {
+        let value = f32::from_lua(value, lua)?;
+        values = (0..array_len)
+            .map(|_| Some(value))
+            .collect::<Vec<Option<f32>>>();
+    }
+    for value in values.iter().flatten() {
+        if !range.contains(value) {
+            return Err(bad_argument_error(
+                None,
+                name,
+                1,
+                format!("{} must be in range [{:?}] but is '{}'", name, range, value).as_str(),
+            ));
+        }
+    }
+    Ok(values)
+}
 
 fn float_array_from_value<Range>(
     lua: &Lua,
@@ -314,30 +357,29 @@ pub(crate) fn glide_array_from_value(
     lua: &Lua,
     value: LuaValue,
     array_len: usize,
-) -> LuaResult<Vec<f32>> {
-    float_array_from_value(lua, value, array_len, "glide", 0.0..)
+) -> LuaResult<Vec<Option<f32>>> {
+    optional_float_array_from_value(lua, value, array_len, "glide", 0.0..)
 }
 
 // ---------------------------------------------------------------------------------------------
 
-fn float_value_from_table<Range>(
+fn optional_float_value_from_table<Range>(
     table: &LuaTable,
     name: &'static str,
     range: Range,
-    default: f32,
-) -> LuaResult<f32>
+) -> LuaResult<Option<f32>>
 where
     Range: RangeBounds<f32> + std::fmt::Debug,
 {
     let value = table.get::<LuaValue>(name)?;
     if value.is_nil() {
-        Ok(default)
+        Ok(None)
     } else if let Some(value) = value
         .as_number()
         .or(value.as_integer().map(|i| i as LuaNumber))
     {
         if range.contains(&(value as f32)) {
-            Ok(value as f32)
+            Ok(Some(value as f32))
         } else {
             Err(LuaError::RuntimeError(format!(
                 "{} property must be in range [{:?}] but is '{}'",
@@ -351,6 +393,18 @@ where
             message: Some(format!("'{}' property must be a number", name)),
         })
     }
+}
+
+fn float_value_from_table<Range>(
+    table: &LuaTable,
+    name: &'static str,
+    range: Range,
+    default: f32,
+) -> LuaResult<f32>
+where
+    Range: RangeBounds<f32> + std::fmt::Debug,
+{
+    Ok(optional_float_value_from_table(table, name, range)?.unwrap_or(default))
 }
 
 pub(crate) fn instrument_value_from_table(table: &LuaTable) -> LuaResult<Option<InstrumentId>> {
@@ -387,8 +441,8 @@ pub(crate) fn delay_value_from_table(table: &LuaTable) -> LuaResult<f32> {
     float_value_from_table(table, "delay", 0.0..1.0, 0.0)
 }
 
-pub(crate) fn glide_value_from_table(table: &LuaTable) -> LuaResult<f32> {
-    float_value_from_table(table, "glide", 0.0.., 0.0)
+pub(crate) fn glide_value_from_table(table: &LuaTable) -> LuaResult<Option<f32>> {
+    optional_float_value_from_table(table, "glide", 0.0..)
 }
 
 fn float_value_from_string<Range>(
@@ -531,7 +585,7 @@ pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> 
         let mut volume = 1.0;
         let mut panning = 0.0;
         let mut delay = 0.0;
-        let mut glide = 0.0;
+        let mut glide = None;
         for split in white_space_splits {
             if let Some(instrument_str) = split.strip_prefix('#') {
                 instrument = instrument_value_from_string(instrument_str)?;
@@ -542,7 +596,7 @@ pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> 
             } else if let Some(delay_str) = split.strip_prefix('d') {
                 delay = delay_value_from_string(delay_str)?;
             } else if let Some(glide_str) = split.strip_prefix('g') {
-                glide = glide_value_from_string(glide_str)?;
+                glide = Some(glide_value_from_string(glide_str)?);
             } else {
                 return Err(LuaError::RuntimeError(
                     format!("invalid note property: '{split}'. ")
@@ -552,7 +606,14 @@ pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> 
                 ));
             }
         }
-        Ok(new_note((note, instrument, volume, panning, delay, glide)))
+        Ok(Some(NoteEvent {
+            note,
+            instrument,
+            glide,
+            volume,
+            panning,
+            delay,
+        }))
     }
 }
 
@@ -573,20 +634,27 @@ pub(crate) fn note_event_from_table_map(table: &LuaTable) -> LuaResult<Option<No
         let glide = glide_value_from_table(table)?;
         // { key = 60, [volume = 1.0, panning = 0.0, delay = 0.0] }
         if let Some(note_value) = key.as_i32() {
-            Ok(new_note((
-                Note::from(note_value as u8),
+            Ok(Some(NoteEvent {
+                note: Note::from(note_value as u8),
                 instrument,
+                glide,
                 volume,
                 panning,
                 delay,
-                glide,
-            )))
+            }))
         }
         // { key = "C4", [instrument = 1, volume = 1.0, panning = 0.0, delay = 0.0] }
         else if let Some(note_str) = key.as_string().map(|s| s.to_string_lossy()) {
             let note = Note::try_from(&*note_str)
                 .map_err(|err| LuaError::RuntimeError(err.to_string()))?;
-            Ok(new_note((note, instrument, volume, panning, delay, glide)))
+            Ok(Some(NoteEvent {
+                note,
+                instrument,
+                glide,
+                volume,
+                panning,
+                delay,
+            }))
         } else {
             Err(LuaError::FromLuaConversionError {
                 from: key.type_name(),
@@ -689,7 +757,7 @@ pub(crate) fn chord_events_from_string(chord_string: &str) -> LuaResult<Vec<Opti
     let mut volume = 1.0;
     let mut panning = 0.0;
     let mut delay = 0.0;
-    let mut glide = 0.0;
+    let mut glide = None;
     for split in white_space_splits {
         if let Some(instrument_str) = split.strip_prefix('#') {
             instrument = instrument_value_from_string(instrument_str)?;
@@ -700,7 +768,7 @@ pub(crate) fn chord_events_from_string(chord_string: &str) -> LuaResult<Vec<Opti
         } else if let Some(delay_str) = split.strip_prefix('d') {
             delay = delay_value_from_string(delay_str)?;
         } else if let Some(glide_str) = split.strip_prefix('g') {
-            glide = glide_value_from_string(glide_str)?;
+            glide = Some(glide_value_from_string(glide_str)?);
         } else {
             return Err(LuaError::RuntimeError(
                 format!("invalid note property: '{split}'. ")
@@ -714,14 +782,14 @@ pub(crate) fn chord_events_from_string(chord_string: &str) -> LuaResult<Vec<Opti
         .intervals()
         .iter()
         .map(|i| {
-            new_note((
-                Note::from(chord.note() as u8 + i),
+            Some(NoteEvent {
+                note: Note::from(chord.note() as u8 + i),
                 instrument,
+                glide,
                 volume,
                 panning,
                 delay,
-                glide,
-            ))
+            })
         })
         .collect::<Vec<_>>())
 }

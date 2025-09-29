@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?
     .with_mappings(&[
         ("bd", vec![new_note("c4")]),
-        ("bd2", vec![new_note(("c4", None, 0.5))]),
+        ("bd2", vec![new_note(("c4", None, None, 0.5))]),
     ]);
 
     let kick_pattern = beat_time
@@ -140,45 +140,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_instrument(BASS)
         .with_rhythm([1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1].to_rhythm())
         .emit(new_note_sequence_emitter(vec![
-            new_note((bass_notes[0], None, 0.5)),
-            new_note((bass_notes[2], None, 0.5)),
-            new_note((bass_notes[3], None, 0.5)),
-            new_note((bass_notes[0], None, 0.5)),
-            new_note((bass_notes[2], None, 0.5)),
-            new_note((bass_notes[3], None, 0.5)),
-            new_note((bass_notes[6].transposed(-12), None, 0.5)),
+            new_note((bass_notes[0], None, None, 0.33)),
+            new_note((bass_notes[2], None, Some(0.5), 0.25)),
+            new_note((bass_notes[3], None, None, 0.33)),
+            new_note((bass_notes[0], None, None, 0.33)),
+            new_note((bass_notes[2], None, Some(0.0), 0.25)),
+            new_note((bass_notes[3], None, None, 0.33)),
+            new_note((bass_notes[6].transposed(-12), None, Some(1.0), 0.33)),
         ]));
 
     let synth_pattern = beat_time.every_nth_bar(4.0).with_instrument(SYNTH).emit(
         new_polyphonic_note_sequence_emitter(vec![
             vec![
-                new_note(("C 4", None, 0.3)),
-                new_note(("D#4", None, 0.3)),
-                new_note(("G 4", None, 0.3)),
+                new_note(("C 4", None, None, 0.3)),
+                new_note(("D#4", None, None, 0.3)),
+                new_note(("G 4", None, None, 0.3)),
             ],
             vec![
-                new_note(("C 4", None, 0.3)),
-                new_note(("D#4", None, 0.3)),
-                new_note(("F 4", None, 0.3)),
+                new_note(("C 4", None, None, 0.3)),
+                new_note(("D#4", None, None, 0.3)),
+                new_note(("F 4", None, None, 0.3)),
             ],
             vec![
-                new_note(("C 4", None, 0.3)),
-                new_note(("D#4", None, 0.3)),
-                new_note(("G 4", None, 0.3)),
+                new_note(("C 4", None, None, 0.3)),
+                new_note(("D#4", None, None, 0.3)),
+                new_note(("G 4", None, None, 0.3)),
             ],
             vec![
-                new_note(("C 4", None, 0.3)),
-                new_note(("D#4", None, 0.3)),
-                new_note(("A#4", None, 0.3)),
+                new_note(("C 4", None, None, 0.3)),
+                new_note(("D#4", None, None, 0.3)),
+                new_note(("A#4", None, None, 0.3)),
             ],
         ]),
     );
 
     let fx_pattern = beat_time.every_nth_seconds(8.0).with_instrument(FX).emit(
         new_polyphonic_note_sequence_emitter(vec![
-            vec![new_note(("C 4", None, 0.2)), None, None],
-            vec![None, new_note(("C 4", None, 0.2)), None],
-            vec![None, None, new_note(("F 4", None, 0.2))],
+            vec![new_note(("C 4", None, None, 0.2)), None, None],
+            vec![None, new_note(("C 4", None, None, 0.2)), None],
+            vec![None, None, new_note(("F 4", None, None, 0.2))],
         ]),
     );
 

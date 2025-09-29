@@ -14,10 +14,10 @@
 >  attributes:
 > ```md
 >  -'#' -> instrument (integer > 0)
+>  -'g' -> glide (number in range [0-INF] - glide step duration)
 >  -'v' -> volume (number in range [0-1] - zero to full volume)
 >  -'p' -> panning (number in range [-1-1] - full left to full right)
->  -'d' -> delay (number in range [0-1] - delay in time base units)
->  -'g' -> glide (number in range [0-INF] - semitones per second)
+>  -'d' -> delay (number in range [0-1] - delay in units)
 > ```
 > 
 > #### examples:
