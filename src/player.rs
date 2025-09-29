@@ -508,6 +508,7 @@ impl SamplePlayer {
                 // Handle note off or stop action only
                 if note_event.note.is_note_off()
                     || (note_event.note.is_note_on()
+                        && note_event.glide.is_none()
                         && self.new_note_action != NewNoteAction::Continue)
                 {
                     if let Some(playing_note) = self.playing_notes[pattern_index].get(&voice_index)
@@ -555,7 +556,7 @@ impl SamplePlayer {
                 // Handle note off or stop action
                 if note_event.note.is_note_off()
                     || (note_event.note.is_note_on()
-                        && note_event.glide == 0.0
+                        && note_event.glide.is_none()
                         && self.new_note_action != NewNoteAction::Continue)
                 {
                     if let Some(playing_note) = self.playing_notes[pattern_index].get(&voice_index)
@@ -573,10 +574,11 @@ impl SamplePlayer {
                     if let Some(instrument) = note_event.instrument {
                         let start_time =
                             self.note_event_time(&pattern_event, note_event, time_offset);
-                        if note_event.glide == 0.0
+                        if note_event.glide.is_none()
                             || !self.play_glided_note(
                                 pattern_index,
                                 voice_index,
+                                &pattern_event,
                                 note_event,
                                 start_time,
                             )
@@ -595,6 +597,7 @@ impl SamplePlayer {
         }
     }
 
+    // calculate absolute sample time from the given time_offset, applying note event delay.
     fn note_event_time(
         &self,
         pattern_event: &PatternEvent,
@@ -605,32 +608,63 @@ impl SamplePlayer {
         time_offset + pattern_event.time + (delay * pattern_event.duration as f32) as SampleTime
     }
 
+    // convert given normalized glide value into a semitones per second based glide value.
+    fn note_glide_value(
+        glide: f32,
+        source_note: Note,
+        target_note: Note,
+        samples_per_sec: u32,
+        event_duration_in_samples: u64,
+    ) -> f32 {
+        let semitones = (target_note as u8 as f32 - source_note as u8 as f32).abs();
+        if glide <= 0.0 || semitones == 0.0 || event_duration_in_samples == 0 {
+            return f32::MAX;
+        }
+        let event_duration_in_seconds =
+            (event_duration_in_samples as f64 / samples_per_sec as f64) as f32;
+        semitones / event_duration_in_seconds / glide
+    }
+
     fn play_glided_note(
         &mut self,
         pattern_index: usize,
         voice_index: usize,
+        pattern_event: &PatternEvent,
         note_event: &crate::NoteEvent,
         start_time: SampleTime,
     ) -> bool {
         if let Some(playing_note) = self.playing_notes[pattern_index].get(&voice_index) {
             let midi_note =
                 (note_event.note as i32 + 60 - self.sample_root_note as i32).clamp(0, 127) as u8;
+            let speed = speed_from_note(midi_note);
             let volume = note_event.volume.max(0.0);
             let panning = note_event.panning.clamp(-1.0, 1.0);
-            let glide = note_event.glide.max(0.0);
-
-            let speed = speed_from_note(midi_note);
+            let glide = note_event.glide.unwrap_or(0.0).max(0.0);
+            let semitones_per_sec_glide = Self::note_glide_value(
+                glide,
+                playing_note.note,
+                note_event.note,
+                self.inner.output_sample_rate(),
+                pattern_event.duration,
+            );
             let playback_id = playing_note.playback_id;
             self.inner
-                .set_source_speed(playback_id, speed, Some(glide), start_time)
-                .and(
-                    self.inner
-                        .set_source_volume(playback_id, volume, start_time),
+                .set_source_speed(
+                    playback_id,
+                    speed,
+                    Some(semitones_per_sec_glide),
+                    start_time,
                 )
-                .and(
-                    self.inner
-                        .set_source_panning(playback_id, panning, start_time),
-                )
+                .and(self.inner.set_source_volume(
+                    playback_id,
+                    volume,
+                    start_time, //
+                ))
+                .and(self.inner.set_source_panning(
+                    playback_id,
+                    panning,
+                    start_time, //
+                ))
                 .is_ok()
         } else {
             false
