@@ -355,7 +355,7 @@ impl Display for Note {
         ];
         match self {
             Self::EMPTY => write!(f, "---"),
-            Self::OFF => write!(f, "off"),
+            Self::OFF => write!(f, "OFF"),
             _ => {
                 let octave = (*self as u8 / 12) as i32;
                 let note = (*self as u8 % 12) as usize;
@@ -391,7 +391,7 @@ mod test {
         assert_eq!(Note::Cs0.to_string(), "C#0");
         assert_eq!(Note::G9.to_string(), "G9");
         assert_eq!(Note::Fs10.to_string(), "F#10");
-        assert_eq!(Note::OFF.to_string(), "off");
+        assert_eq!(Note::OFF.to_string(), "OFF");
     }
 
     #[test]
