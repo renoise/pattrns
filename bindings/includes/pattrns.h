@@ -14,6 +14,9 @@ constexpr static const uint32_t NO_INSTRUMENT_ID = UINT32_MAX;
 /// Parameter change value which refers to an empty, undefined parameter.
 constexpr static const uint32_t NO_PARAMETER_ID = UINT32_MAX;
 
+/// Instrument_id value which refers to an unset, undefined glide value.
+constexpr static const float NO_GLIDE_VALUE = -1.0;
+
 /// Note value which refers to an empty, undefined note.
 constexpr static const uint8_t EMPTY_NOTE = 254;
 
@@ -339,6 +342,7 @@ struct UInt32Result {
 struct NoteEvent {
   uint8_t note;
   uint32_t instrument;
+  float glide;
   float volume;
   float panning;
   float delay;

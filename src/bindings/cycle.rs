@@ -85,6 +85,8 @@ mod test {
         Emitter, Event, Note, RhythmEvent,
     };
 
+    use pretty_assertions::assert_eq;
+
     fn new_test_engine() -> LuaResult<(Lua, LuaTimeoutHook)> {
         new_test_engine_with_timebase(&BeatTimeBase {
             beats_per_min: 120.0,
@@ -155,7 +157,7 @@ mod test {
         );
 
         // check note properties
-        let mapped_cycle = evaluate_cycle_userdata(&lua, r#"cycle("a:1:v0.1:p-1.0:d0.3")"#)?;
+        let mapped_cycle = evaluate_cycle_userdata(&lua, r#"cycle("a:1:g0.1:v0.1:p-1.0:d0.3")"#)?;
         let mut event_iter =
             CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
         assert_eq!(
@@ -165,9 +167,10 @@ mod test {
             Some(vec![Event::NoteEvents(vec![new_note((
                 Note::A4,
                 InstrumentId::from(1),
+                Some(0.1),
                 0.1,
                 -1.0,
-                0.3
+                0.3,
             ))]),])
         );
 
@@ -201,8 +204,13 @@ mod test {
                 .run(RhythmEvent::default(), true)
                 .map(|events| events.into_iter().map(|e| e.event).collect::<Vec<_>>()),
             Some(vec![
-                Event::NoteEvents(vec![new_note((Note::C4, InstrumentId::from(1), 0.1))]),
-                Event::NoteEvents(vec![new_note((Note::C4, InstrumentId::from(66), 1.0))])
+                Event::NoteEvents(vec![new_note((Note::C4, InstrumentId::from(1), None, 0.1))]),
+                Event::NoteEvents(vec![new_note((
+                    Note::C4,
+                    InstrumentId::from(66),
+                    None,
+                    1.0
+                ))])
             ])
         );
 

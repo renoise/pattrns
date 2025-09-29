@@ -14,12 +14,12 @@ Raw integer values like `48`, are interpreted as MIDI note numbers in the `note`
 
 Instead of using a string, you can also specify notes via a Lua table with the following properties.
 
-- `"key"` - REQUIRED - MIDI Note number such as `48` or a string, such as `"c4"`
-- `"instrument"` OPTIONAL - Instrument/Sample/Patch number >= 0
-- `"volume"`  - OPTIONAL - Volume number in range [0.0 - 1.0]
-- `"panning"` - OPTIONAL - Panning factor in range [-1.0 - 1.0] where 0 is center
-- `"delay"` - OPTIONAL - Delay factor in range [0.0 - 1.0]
-- `'glide'` - OPTIONAL -  Glide factor in range [0-INF] as semitones per second
+- `"key"` - *required* - MIDI Note number such as `48` or a string, such as `"c4"`
+- `"instrument"` *optional* - Instrument/Sample/Patch number >= 0
+- `'glide'` - *optional* - Glide factor in range [0 - INF]
+- `"volume"`  - *optional* - Volume number in range [0.0 - 1.0]
+- `"panning"` - *optional* - Panning factor in range [-1.0 - 1.0] where 0 is center
+- `"delay"` - *optional* - Delay factor in range [0.0 - 1.0]
 
 
 » `event = { key = 48, volume = 0.1 }` *a c4 with volume 0.1*
@@ -34,12 +34,23 @@ Valid keys are `c,d,e,f,g,a,b`. Valid modifiers are `#` and `b`. Valid octaves a
 Other note properties can be specified in the string notation as well.
 
 - `'#'` instrument (integer >= 0)
+- `'g'` glide (number in range [0-INF])
 - `'v'` volume (number in range [0-1])
 - `'p'` panning (number in range [-1-1])
 - `'d'` delay (number in range [0-1])
-- `'g'` glide (number in range [0-INF])
 
 » `event = { "f#4 #1 v0.2" }` *emit a f sharp for instrument 1 with volume 0.2*
+
+### Note Glides
+
+Note glides (portamento) can be archived by setting a `g` note property value:
+
+With a glide value of `1`, the target note is reached within a full time step's duration, regardless of the note range. A glide value of `0.5` reaches the target note in half the time, meaning it glides twice as fast. A value of `0` instantly glides to the specified note. 
+
+» `event = sequence{"c4", "e4 g0.5"}` glide from c4 to e4 in half of the step time
+
+» `event = sequence{"c4", "e4 g0.0"}` instantly glide from c4 to e4
+
 
 ### Note Chord Strings
 

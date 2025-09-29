@@ -216,13 +216,15 @@ impl LuaUserData for NoteUserData {
             let mut this = ud.borrow_mut::<Self>()?;
             let glides = glide_array_from_value(lua, value, this.notes.len())?;
             for (note, glide) in this.notes.iter_mut().zip(glides.into_iter()) {
-                if !(0.0..).contains(&glide) {
-                    return Err(bad_argument_error(
-                        "glide",
-                        "value",
-                        1,
-                        "glide must be in range [0.0..]",
-                    ));
+                if let Some(glide) = glide {
+                    if !(0.0..).contains(&glide) {
+                        return Err(bad_argument_error(
+                            "glide",
+                            "value",
+                            1,
+                            "glide must be in range [0.0..]",
+                        ));
+                    }
                 }
                 if let Some(note) = note {
                     note.glide = glide;
@@ -240,6 +242,8 @@ impl LuaUserData for NoteUserData {
 mod test {
     use super::*;
     use crate::{bindings::*, event::new_note};
+
+    use pretty_assertions::assert_eq;
 
     fn new_test_engine() -> LuaResult<(Lua, LuaTimeoutHook)> {
         let (mut lua, mut timeout_hook) = new_engine()?;
@@ -302,12 +306,19 @@ mod test {
         let note_event = evaluate_note_userdata(&lua, r#"note("C#1 #2 v0.5 p0.1 d0.2 g5")"#)?;
         assert_eq!(
             note_event.notes,
-            vec![new_note((Note::Cs1, InstrumentId::from(2), 0.5, 0.1, 0.2, 5.0))]
+            vec![new_note((
+                Note::Cs1,
+                InstrumentId::from(2),
+                Some(5.0),
+                0.5,
+                0.1,
+                0.2,
+            ))]
         );
         let note_event = evaluate_note_userdata(&lua, r#"note("C#1 d0.2")"#)?;
         assert_eq!(
             note_event.notes,
-            vec![new_note((Note::Cs1, None, 1.0, 0.0, 0.2))]
+            vec![new_note((Note::Cs1, None, None, 1.0, 0.0, 0.2))]
         );
 
         // Note string array
@@ -320,7 +331,10 @@ mod test {
         let note_event = evaluate_note_userdata(&lua, r#"note({"C#1 v0.5", "C5"})"#)?;
         assert_eq!(
             note_event.notes,
-            vec![new_note(("c#1", None, 0.5)), new_note(("c5", None, 1.0))]
+            vec![
+                new_note(("c#1", None, None, 0.5)),
+                new_note(("c5", None, None, 1.0))
+            ]
         );
 
         // Note int
@@ -349,7 +363,7 @@ mod test {
         let note_event = evaluate_note_userdata(&lua, r#"note({key = "c8"})"#)?;
         assert_eq!(note_event.notes, vec![new_note("c8")]);
         let note_event = evaluate_note_userdata(&lua, r#"note({key = "G8", volume = 0.5})"#)?;
-        assert_eq!(note_event.notes, vec![new_note(("g8", None, 0.5))]);
+        assert_eq!(note_event.notes, vec![new_note(("g8", None, None, 0.5))]);
         let note_event = evaluate_note_userdata(&lua, r#"note({key = 60})"#)?;
         assert_eq!(note_event.notes, vec![new_note("c5")]);
         let note_event = evaluate_note_userdata(&lua, r#"note({key = "60"})"#)?;
@@ -363,8 +377,8 @@ mod test {
         assert_eq!(
             poly_note_event.notes,
             vec![
-                new_note(("c#1", None, 0.5)),
-                new_note(("g2", None, 0.75)),
+                new_note(("c#1", None, None, 0.5)),
+                new_note(("g2", None, None, 0.75)),
                 None
             ]
         );
@@ -373,11 +387,11 @@ mod test {
         assert_eq!(
             evaluate_note_userdata(
                 &lua,
-                r#"note(note("c4 #100 v0.2 p0.3 d0.4 g8", "", "e4").notes)"#
+                r#"note(note("c4 #100 g8 v0.2 p0.3 d0.4", "", "e4").notes)"#
             )?
             .notes,
             vec![
-                new_note(("c4", InstrumentId::from(100), 0.2, 0.3, 0.4, 8.0)),
+                new_note(("c4", InstrumentId::from(100), Some(8.0), 0.2, 0.3, 0.4,)),
                 None,
                 new_note("e4"),
             ]
@@ -418,17 +432,17 @@ mod test {
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c7'maj v0.2")"#)?.notes,
             vec![
-                new_note(("c7", None, 0.2)),
-                new_note(("e7", None, 0.2)),
-                new_note(("g7", None, 0.2)),
+                new_note(("c7", None, None, 0.2)),
+                new_note(("e7", None, None, 0.2)),
+                new_note(("g7", None, None, 0.2)),
             ]
         );
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c4'm v0.2", "c7")"#)?.notes,
             vec![
-                new_note(("c4", None, 0.2)),
-                new_note(("d#4", None, 0.2)),
-                new_note(("g4", None, 0.2)),
+                new_note(("c4", None, None, 0.2)),
+                new_note(("d#4", None, None, 0.2)),
+                new_note(("g4", None, None, 0.2)),
                 new_note("c7"),
             ]
         );
@@ -472,9 +486,9 @@ mod test {
             evaluate_note_userdata(&lua, r#"note("c4 v0.5", "d4 v0.5", "e4 v0.5"):volume(0.2)"#)?
                 .notes,
             vec![
-                new_note(("c4", None, 0.2)),
-                new_note(("d4", None, 0.2)),
-                new_note(("e4", None, 0.2)),
+                new_note(("c4", None, None, 0.2)),
+                new_note(("d4", None, None, 0.2)),
+                new_note(("e4", None, None, 0.2)),
             ]
         );
         assert_eq!(
@@ -484,9 +498,9 @@ mod test {
             )?
             .notes,
             vec![
-                new_note(("c4", None, 0.0)),
-                new_note(("d4", None, 0.0)),
-                new_note(("e4", None, 0.5)),
+                new_note(("c4", None, None, 0.0)),
+                new_note(("d4", None, None, 0.0)),
+                new_note(("e4", None, None, 0.5)),
             ]
         );
         assert_eq!(
@@ -496,9 +510,9 @@ mod test {
             )?
             .notes,
             vec![
-                new_note(("c4", None, 0.1)),
-                new_note(("d4", None, 0.2)),
-                new_note(("e4", None, 0.3)),
+                new_note(("c4", None, None, 0.1)),
+                new_note(("d4", None, None, 0.2)),
+                new_note(("e4", None, None, 0.3)),
             ]
         );
 
@@ -510,9 +524,9 @@ mod test {
             )?
             .notes,
             vec![
-                new_note(("c4", None, 1.0)),
-                new_note(("d4", None, 1.0)),
-                new_note(("e4", None, 1.0)),
+                new_note(("c4", None, None, 1.0)),
+                new_note(("d4", None, None, 1.0)),
+                new_note(("e4", None, None, 1.0)),
             ]
         );
         assert_eq!(
@@ -522,9 +536,9 @@ mod test {
             )?
             .notes,
             vec![
-                new_note(("c4", None, 0.5)),
-                new_note(("d4", None, 1.0)),
-                new_note(("e4", None, 0.5)),
+                new_note(("c4", None, None, 0.5)),
+                new_note(("d4", None, None, 1.0)),
+                new_note(("e4", None, None, 0.5)),
             ]
         );
         Ok(())
@@ -544,17 +558,17 @@ mod test {
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c4", "d4", "e4"):panning(-1.0)"#)?.notes,
             vec![
-                new_note(("c4", None, 1.0, -1.0)),
-                new_note(("d4", None, 1.0, -1.0)),
-                new_note(("e4", None, 1.0, -1.0)),
+                new_note(("c4", None, None, 1.0, -1.0)),
+                new_note(("d4", None, None, 1.0, -1.0)),
+                new_note(("e4", None, None, 1.0, -1.0)),
             ]
         );
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c4", "d4", "e4"):panning({-1.0, 1.0})"#)?.notes,
             vec![
-                new_note(("c4", None, 1.0, -1.0)),
-                new_note(("d4", None, 1.0, 1.0)),
-                new_note(("e4", None, 1.0, 0.0)),
+                new_note(("c4", None, None, 1.0, -1.0)),
+                new_note(("d4", None, None, 1.0, 1.0)),
+                new_note(("e4", None, None, 1.0, 0.0)),
             ]
         );
         Ok(())
@@ -574,17 +588,49 @@ mod test {
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c4", "d4", "e4"):delay(0.75)"#)?.notes,
             vec![
-                new_note(("c4", None, 1.0, 0.0, 0.75)),
-                new_note(("d4", None, 1.0, 0.0, 0.75)),
-                new_note(("e4", None, 1.0, 0.0, 0.75)),
+                new_note(("c4", None, None, 1.0, 0.0, 0.75)),
+                new_note(("d4", None, None, 1.0, 0.0, 0.75)),
+                new_note(("e4", None, None, 1.0, 0.0, 0.75)),
             ]
         );
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c4", "d4", "e4"):delay({0.25, 0.5})"#)?.notes,
             vec![
-                new_note(("c4", None, 1.0, 0.0, 0.25)),
-                new_note(("d4", None, 1.0, 0.0, 0.5)),
-                new_note(("e4", None, 1.0, 0.0)),
+                new_note(("c4", None, None, 1.0, 0.0, 0.25)),
+                new_note(("d4", None, None, 1.0, 0.0, 0.5)),
+                new_note(("e4", None, None, 1.0, 0.0)),
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn note_glide() -> LuaResult<()> {
+        let (lua, _) = new_test_engine()?;
+
+        // delay
+        assert!(evaluate_note_userdata(&lua, r#"note("c4"):glide(1.0)"#).is_ok());
+        assert!(evaluate_note_userdata(&lua, r#"note("c4"):glide()"#).is_err());
+        assert!(evaluate_note_userdata(&lua, r#"note("c4"):glide(-1)"#).is_err());
+        assert!(evaluate_note_userdata(&lua, r#"note("c4"):glide({})"#).is_ok());
+        assert!(evaluate_note_userdata(&lua, r#"note("c4"):glide({"wurst"})"#).is_err());
+        assert!(evaluate_note_userdata(&lua, r#"note("c4"):glide({nil, 1})"#).is_ok());
+        assert_eq!(
+            evaluate_note_userdata(&lua, r#"note("c4", "d4", "e4"):glide(0.5)"#)?.notes,
+            vec![
+                new_note(("c4", None, Some(0.5), 1.0, 0.0, 0.0,)),
+                new_note(("d4", None, Some(0.5), 1.0, 0.0, 0.0,)),
+                new_note(("e4", None, Some(0.5), 1.0, 0.0, 0.0,)),
+            ]
+        );
+        assert_eq!(
+            evaluate_note_userdata(&lua, r#"note("c4", "d4", "e4"):glide({0.25, nil, 0.5})"#)?
+                .notes,
+            vec![
+                new_note(("c4", None, Some(0.25), 1.0, 0.0, 0.0,)),
+                new_note(("d4", None, None, 1.0, 0.0, 0.0)),
+                new_note(("e4", None, Some(0.5), 1.0, 0.0, 0.0)),
             ]
         );
 

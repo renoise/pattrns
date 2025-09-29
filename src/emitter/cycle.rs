@@ -127,7 +127,7 @@ pub(crate) fn apply_cycle_note_properties(
                 b"g" => {
                     let glide = float_value_in_range(value, "glide", 0.0..)?;
                     for note_event in note_events.iter_mut().flatten() {
-                        note_event.glide = glide;
+                        note_event.glide = Some(glide);
                     }
                 }
                 _ => {

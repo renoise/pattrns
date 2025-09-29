@@ -79,6 +79,8 @@ mod test {
         RhythmEvent,
     };
 
+    use pretty_assertions::assert_eq;
+
     fn new_test_engine(
         beats_per_min: f32,
         beats_per_bar: u32,
@@ -154,12 +156,12 @@ mod test {
             Some(PatternEvent {
                 time: 22050,
                 event: Some(Event::NoteEvents(vec![Some(NoteEvent {
-                    instrument: None,
                     note: Note::C6,
+                    instrument: None,
+                    glide: None,
                     volume: 1.0,
                     panning: 0.0,
                     delay: 0.0,
-                    glide: 0.0
                 })])),
                 duration: 11025
             })
@@ -174,10 +176,10 @@ mod test {
         let trigger_event = Event::NoteEvents(vec![Some(NoteEvent {
             note: Note::A4,
             instrument: None,
+            glide: Some(0.5),
             volume: 0.5,
             panning: 0.0,
             delay: 0.25,
-            glide: 0.5,
         })]);
 
         // BeatTimePattern function Context
@@ -276,12 +278,12 @@ mod test {
             Some(PatternEvent {
                 time: 0,
                 event: Some(Event::NoteEvents(vec![Some(NoteEvent {
-                    instrument: None,
                     note: Note::C4,
+                    instrument: None,
+                    glide: None,
                     volume: 1.0,
                     panning: 0.0,
                     delay: 0.0,
-                    glide: 0.0,
                 })])),
                 duration: 11025,
             })
@@ -355,10 +357,10 @@ mod test {
         let trigger_event = Event::NoteEvents(vec![Some(NoteEvent {
             note: Note::C4,
             instrument: None,
+            glide: None,
             volume: 0.25,
             panning: 0.5,
             delay: 0.75,
-            glide: 0.0,
         })]);
 
         // SecondTimePattern function Context
@@ -396,12 +398,12 @@ mod test {
             Some(PatternEvent {
                 time: 0,
                 event: Some(Event::NoteEvents(vec![Some(NoteEvent {
-                    instrument: None,
                     note: Note::C4,
+                    instrument: None,
+                    glide: None,
                     volume: 1.0,
                     panning: 0.0,
                     delay: 0.0,
-                    glide: 0.0
                 })],),),
                 duration: 48
             })
