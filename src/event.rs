@@ -43,23 +43,28 @@ pub struct ParameterId(usize);
 #[derive(Clone, PartialEq, Debug)]
 pub struct NoteEvent {
     pub note: Note,
-    pub instrument: Option<InstrumentId>,
-    pub volume: f32,  // [0 - 1]
-    pub panning: f32, // [-1 - 1]
-    pub delay: f32,   // [0 - 1]
-    pub glide: f32,   // [0 - INF]
+    pub instrument: Option<InstrumentId>, // [0 - INF] or None
+    pub glide: Option<f32>,               // [0 - INF] or None
+    pub volume: f32,                      // [0 - 1]
+    pub panning: f32,                     // [-1 - 1]
+    pub delay: f32,                       // [0 - 1]
 }
 
 impl NoteEvent {
     pub fn to_string(&self, show_instruments: bool) -> String {
         if show_instruments {
             format!(
-                "{} {} {:.2} {:.2} {:.2}",
+                "{} #{} g{} v{:.2} p{:.2} d{:.2}",
                 self.note,
                 if let Some(instrument) = self.instrument {
-                    format!("#{:02}", instrument)
+                    format!("{:02}", instrument)
                 } else {
-                    "NA".to_string()
+                    "-".to_string()
+                },
+                if let Some(glide) = self.glide {
+                    format!("{:.2}", glide)
+                } else {
+                    "-".to_string()
                 },
                 self.volume,
                 self.panning,
@@ -67,8 +72,16 @@ impl NoteEvent {
             )
         } else {
             format!(
-                "{} {:.2} {:.2} {:.2}",
-                self.note, self.volume, self.panning, self.delay
+                "{} g{} v{:.2} p{:.2} d{:.2}",
+                self.note,
+                if let Some(glide) = self.glide {
+                    format!("{:.2}", glide)
+                } else {
+                    "-".to_string()
+                },
+                self.volume,
+                self.panning,
+                self.delay
             )
         }
     }
@@ -84,10 +97,10 @@ where
         Self {
             note,
             instrument: None,
+            glide: None,
             volume: 1.0,
             panning: 0.0,
             delay: 0.0,
-            glide: 0.0,
         }
     }
 }
@@ -103,96 +116,100 @@ where
         Self {
             note,
             instrument,
+            glide: None,
             volume: 1.0,
             panning: 0.0,
             delay: 0.0,
-            glide: 0.0,
         }
     }
 }
 
-impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, f32)> for NoteEvent
+impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, Option<f32>)> for NoteEvent
 where
     <N as TryInto<Note>>::Error: std::fmt::Debug,
 {
-    // Initialize from a (Instrument, Note, Volume) tuple
-    fn from((note, instrument, volume): (N, I, f32)) -> Self {
+    // Initialize from a (Instrument, Note, Glide) tuple
+    fn from((note, instrument, glide): (N, I, Option<f32>)) -> Self {
         let note = note.try_into().expect("Failed to convert note");
         let instrument = instrument.into();
+        let glide = glide.map(|g| g.max(0.0));
+        Self {
+            note,
+            instrument,
+            glide,
+            volume: 1.0,
+            panning: 0.0,
+            delay: 0.0,
+        }
+    }
+}
+
+impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, Option<f32>, f32)> for NoteEvent
+where
+    <N as TryInto<Note>>::Error: std::fmt::Debug,
+{
+    // Initialize from a (Instrument, Note, Glide, Volume) tuple
+    fn from((note, instrument, glide, volume): (N, I, Option<f32>, f32)) -> Self {
+        let note = note.try_into().expect("Failed to convert note");
+        let instrument = instrument.into();
+        let glide = glide.map(|g| g.max(0.0));
         let volume = volume.clamp(0.0, 1.0);
         Self {
             note,
             instrument,
+            glide,
             volume,
             panning: 0.0,
             delay: 0.0,
-            glide: 0.0,
         }
     }
 }
 
-impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, f32, f32)> for NoteEvent
+impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, Option<f32>, f32, f32)>
+    for NoteEvent
 where
     <N as TryInto<Note>>::Error: std::fmt::Debug,
 {
-    // Initialize from a (Instrument, Note, Volume, Panning) tuple
-    fn from((note, instrument, volume, panning): (N, I, f32, f32)) -> Self {
+    // Initialize from a (Instrument, Note, Glide, Volume, Panning) tuple
+    fn from((note, instrument, glide, volume, panning): (N, I, Option<f32>, f32, f32)) -> Self {
         let note = note.try_into().expect("Failed to convert note");
         let instrument = instrument.into();
+        let glide = glide.map(|g| g.max(0.0));
         let volume = volume.clamp(0.0, 1.0);
         let panning = panning.clamp(-1.0, 1.0);
         Self {
             note,
             instrument,
+            glide,
             volume,
             panning,
             delay: 0.0,
-            glide: 0.0,
         }
     }
 }
 
-impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, f32, f32, f32)> for NoteEvent
+impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, Option<f32>, f32, f32, f32)>
+    for NoteEvent
 where
     <N as TryInto<Note>>::Error: std::fmt::Debug,
 {
-    // Initialize from a (Instrument, Note, Volume, Panning, Delay) tuple
-    fn from((note, instrument, volume, panning, delay): (N, I, f32, f32, f32)) -> Self {
+    // Initialize from a (Instrument, Note, Glide, Volume, Panning, Delay) tuple
+    fn from(
+        (note, instrument, glide, volume, panning, delay): (N, I, Option<f32>, f32, f32, f32),
+    ) -> Self {
         let note = note.try_into().expect("Failed to convert note");
         let instrument = instrument.into();
+        let glide = glide.map(|g| g.max(0.0));
         let volume = volume.clamp(0.0, 1.0);
         let panning = panning.clamp(-1.0, 1.0);
         let delay = delay.clamp(0.0, 1.0);
         Self {
             note,
             instrument,
-            volume,
-            panning,
-            delay,
-            glide: 0.0,
-        }
-    }
-}
-
-impl<N: TryInto<Note>, I: Into<Option<InstrumentId>>> From<(N, I, f32, f32, f32, f32)> for NoteEvent
-where
-    <N as TryInto<Note>>::Error: std::fmt::Debug,
-{
-    // Initialize from a (Instrument, Note, Volume, Panning, Delay) tuple
-    fn from((note, instrument, volume, panning, delay, glide): (N, I, f32, f32, f32, f32)) -> Self {
-        let note = note.try_into().expect("Failed to convert note");
-        let instrument = instrument.into();
-        let volume = volume.clamp(0.0, 1.0);
-        let panning = panning.clamp(-1.0, 1.0);
-        let delay = delay.clamp(0.0, 1.0);
-        let glide = glide.max(0.0);
-        Self {
-            note,
-            instrument,
-            volume,
-            panning,
-            delay,
             glide,
+            volume,
+            panning,
+            delay,
         }
     }
 }

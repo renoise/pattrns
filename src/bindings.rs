@@ -795,6 +795,8 @@ fn compile_chunk(chunk: &'static str, _name: &'static str) -> LuaResult<Vec<u8>>
 mod test {
     use super::*;
 
+    // use pretty_assertions::assert_eq;
+
     fn new_test_engine(
         beats_per_min: f32,
         beats_per_bar: u32,
