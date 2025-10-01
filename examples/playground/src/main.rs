@@ -180,7 +180,7 @@ impl Playground {
         let time_base = BeatTimeBase {
             beats_per_min: 120.0,
             beats_per_bar: 4,
-            samples_per_sec: player.file_player().output_sample_rate(),
+            samples_per_sec: player.sample_rate(),
         };
         let time_base_changed = false;
 
@@ -198,7 +198,7 @@ impl Playground {
         let instrument_id = samples.first().map(|e| e.id);
 
         // playback time
-        let output_start_sample_time = player.file_player().output_sample_frame_position();
+        let output_start_sample_time = player.inner().output_sample_frame_position();
         let emitted_sample_time = 0;
 
         // install emscripten frame timer
@@ -298,7 +298,7 @@ impl Playground {
                 .time_base
                 .seconds_to_samples(Self::PLAYBACK_PRELOAD_SECONDS);
             self.output_start_sample_time =
-                self.player.file_player().output_sample_frame_position() + preload_offset;
+                self.player.inner().output_sample_frame_position() + preload_offset;
             self.emitted_sample_time = 0;
             // reset sequence
             if let Some(sequence) = self.sequence.as_mut() {
@@ -311,18 +311,18 @@ impl Playground {
 
     /// Stops all currently playing audio sources and resets the sequence.
     pub fn stop_playing(&mut self) {
-        let _ = self.player.file_player_mut().stop_all_sources();
+        let _ = self.player.stop_all_sources();
         self.playing = false;
     }
 
     /// Stops all currently playing audio sources.
     pub fn stop_playing_notes(&mut self) {
-        let _ = self.player.file_player_mut().stop_all_sources();
+        let _ = self.player.stop_all_sources();
     }
 
     /// Set global playback volume.
     pub fn set_volume(&mut self, volume: f32) {
-        self.player.set_global_volume(volume);
+        self.player.inner_mut().set_output_volume(volume);
     }
 
     /// Handle incoming MIDI note on event
@@ -330,8 +330,7 @@ impl Playground {
         assert!(note as usize <= Self::NUM_MIDI_NOTES);
         if self.playing_notes.is_empty() || self.pattern_slot(note as usize).is_none() {
             // reset play head
-            self.output_start_sample_time =
-                self.player.file_player().output_sample_frame_position();
+            self.output_start_sample_time = self.player.inner().output_sample_frame_position();
             self.emitted_sample_time = 0;
             // memorize playing note
             let new_note = PlayingNote {
@@ -483,13 +482,13 @@ impl Playground {
         );
 
         // check if audio output has been suspended by the browser
-        let suspended = self.player.file_player().output_suspended();
+        let suspended = self.player.inner().output_suspended();
 
         // run the player, when playing and audio output is not suspended
         if !suspended && (self.playing || !self.playing_notes.is_empty()) {
             // calculate emitted and playback time differences
             let time_base = self.time_base;
-            let output_sample_time = self.player.file_player().output_sample_frame_position();
+            let output_sample_time = self.player.inner().output_sample_frame_position();
             let samples_played = // can be be negative, because we start with a preload offset 
                 (output_sample_time as i64 - self.output_start_sample_time as i64).max(0) as u64;
             let seconds_played = time_base.samples_to_seconds(samples_played);
