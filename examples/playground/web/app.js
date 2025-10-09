@@ -539,7 +539,7 @@ const app = {
         const appendExampleLink = (example) => {
             const li = document.createElement('li');
             const a = document.createElement('a');
-            a.href = `#${btoa(example.content)}`;
+            a.href = `#${this._encodeScript(example.content)}`;
             a.textContent = example.name;
             a.style.color = 'var(--color-link)';
             a.style.textDecoration = 'none';
@@ -565,23 +565,27 @@ const app = {
         examples.forEach(appendExampleLink);
     },
 
-    // Decode base64 encoded script from URL hash
-    _readHash: function () {
+    _encodeScript: function (script) {
+        return btoa(JSON.stringify({ script }));
+    },
+    
+    _decodeScriptFromHash: function () {
         const hash = window.location.hash;
         if (hash.length < 2) {
-            return "";
+            return null;
         }
         try {
-            const decoded = atob(hash.substring(1).split('?')[0]);
-            return decoded;
+            const string = atob(hash.substring(1).split('?')[0]);
+            const object = JSON.parse(string)
+            return object.script;
         } catch (e) {
-            return "";
+            return null;
         }
     },
 
-    _writeHash: function (code) {
+    _writeHash: function (script) {
         this._writtenHash = true;
-        window.location.hash = btoa(code);
+        window.location.hash = this._encodeScript(script);
     },
 
     // Initialize Monaco editor
@@ -594,8 +598,7 @@ const app = {
 
         require(['vs/editor/editor.main'], () => {
             // Try parsing script from URL hash or use the default
-            const hash = this._readHash()
-            const scriptContent = hash ? hash : defaultScriptContent;
+            const scriptContent = this._decodeScriptFromHash() || defaultScriptContent;
             
             // Create editor
             this._editor = monaco.editor.create(editorElement, {
@@ -678,7 +681,8 @@ const app = {
                 if (this._writtenHash) {
                     this._writtenHash = false;
                 } else {
-                    this._editor.setValue(this._readHash())
+                    const script = this._decodeScriptFromHash();
+                    this._editor.setValue(script || "")
                 }
             });
             
