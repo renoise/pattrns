@@ -199,6 +199,7 @@ const app = {
     _initialized: false,
     _editor: undefined,
     _editCount: 0,
+    _writtenHash: false,
 
     initialize: function () {
         // hide spinner, show content
@@ -523,7 +524,6 @@ const app = {
                 link.style.textDecoration = 'none';
             });
             link.style.textDecoration = 'underline';
-            this._editor.setValue(example.content);
             if (backend.isPlaying()) {
                 backend.stopPlaying();
                 backend.updateScriptContent(example.content);
@@ -536,34 +536,10 @@ const app = {
             this.setStatus(`Loaded script: '${example.name}'.`);
         };
 
-        quickstartExamples.forEach(group => {
-            const quickstartGroup = document.createElement('h4');
-            quickstartGroup.textContent = group.name;
-            examplesList.appendChild(quickstartGroup);
-
-            group.entries.forEach(example => {
-                const li = document.createElement('li');
-                const a = document.createElement('a');
-                a.href = '#';
-                a.textContent = example.name;
-                a.style.color = 'var(--color-link)';
-                a.style.textDecoration = 'none';
-                a.onclick = () => loadExample(a, example);
-                allLinks.push(a)
-                li.appendChild(a);
-                examplesList.appendChild(li);
-            });
-        });
-
-        // Add examples
-        const examplesSection = document.createElement('h3');
-        examplesSection.textContent = "Examples";
-        examplesList.appendChild(examplesSection);
-
-        examples.forEach(example => {
+        const appendExampleLink = (example) => {
             const li = document.createElement('li');
             const a = document.createElement('a');
-            a.href = '#';
+            a.href = `#${btoa(example.content)}`;
             a.textContent = example.name;
             a.style.color = 'var(--color-link)';
             a.style.textDecoration = 'none';
@@ -571,7 +547,41 @@ const app = {
             allLinks.push(a)
             li.appendChild(a);
             examplesList.appendChild(li);
+        }
+
+        quickstartExamples.forEach(group => {
+            const quickstartGroup = document.createElement('h4');
+            quickstartGroup.textContent = group.name;
+            examplesList.appendChild(quickstartGroup);
+
+            group.entries.forEach(appendExampleLink);
         });
+
+        // Add examples
+        const examplesSection = document.createElement('h3');
+        examplesSection.textContent = "Examples";
+        examplesList.appendChild(examplesSection);
+
+        examples.forEach(appendExampleLink);
+    },
+
+    // Decode base64 encoded script from URL hash
+    _readHash: function () {
+        const hash = window.location.hash;
+        if (hash.length < 2) {
+            return "";
+        }
+        try {
+            const decoded = atob(hash.substring(1).split('?')[0]);
+            return decoded;
+        } catch (e) {
+            return "";
+        }
+    },
+
+    _writeHash: function (code) {
+        this._writtenHash = true;
+        window.location.hash = btoa(code);
     },
 
     // Initialize Monaco editor
@@ -581,10 +591,15 @@ const app = {
         let editorElement = document.getElementById('editor');
         console.assert(editorElement);
 
+
         require(['vs/editor/editor.main'], () => {
+            // Try parsing script from URL hash or use the default
+            const hash = this._readHash()
+            const scriptContent = hash ? hash : defaultScriptContent;
+            
             // Create editor
             this._editor = monaco.editor.create(editorElement, {
-                value: defaultScriptContent,
+                value: scriptContent,
                 language: 'lua',
                 theme: 'vs-dark',
                 minimap: { enabled: false },
@@ -595,6 +610,7 @@ const app = {
             });
             // Track edits
             this._editor.onDidChangeModelContent(() => {
+                this._writeHash(this._editor.getValue());
                 this._updateEditCount(this._editCount + 1)
             });
             // Handle Ctrl+Enter
@@ -657,6 +673,15 @@ const app = {
                 }
             });
 
+            window.addEventListener("hashchange", () => {
+                // Ignore hash changes that were triggered by user edits
+                if (this._writtenHash) {
+                    this._writtenHash = false;
+                } else {
+                    this._editor.setValue(this._readHash())
+                }
+            });
+            
             /*
             // TODO: Register a simple autocomplete provider for Lua for `pattern`
             monaco.languages.registerCompletionItemProvider('lua', {
