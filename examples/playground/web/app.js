@@ -506,7 +506,7 @@ const app = {
         }
     },
 
-    _updateScript: function(script, name = "untitled") {
+    _updateScript: function({script, name}) {
         if (backend.isPlaying()) {
             backend.stopPlaying();
             backend.updateScriptContent(script);
@@ -533,22 +533,20 @@ const app = {
         examplesList.appendChild(quickstartSection);
 
         let allLinks = [];
-        let loadExample = (link, example) => {
+        let loadExample = (link) => {
             allLinks.forEach(link => {
                 link.style.textDecoration = 'none';
             });
             link.style.textDecoration = 'underline';
-            this._updateScript(example.content, example.name);
         };
 
         const appendExampleLink = (example) => {
             const li = document.createElement('li');
             const a = document.createElement('a');
-            a.href = `#${this._encodeScript(example.content)}`;
+            a.href = `#${this._encodeScript(example.content, example.name)}`;
             a.textContent = example.name;
             a.style.color = 'var(--color-link)';
             a.style.textDecoration = 'none';
-            a.onclick = () => loadExample(a, example);
             allLinks.push(a)
             li.appendChild(a);
             examplesList.appendChild(li);
@@ -570,21 +568,21 @@ const app = {
         examples.forEach(appendExampleLink);
     },
 
-    _encodeScript: function (script) {
-        return btoa(JSON.stringify({ script }));
+    _encodeScript: function (script, name) {
+        return btoa(JSON.stringify({ script, name }));
     },
     
-    _decodeScriptFromHash: function () {
+    _decodeScriptFromHash: function (defaultScriptData = {script: "", name: "untitled"}) {
         const hash = window.location.hash;
         if (hash.length < 2) {
-            return null;
+            return defaultScriptData;
         }
         try {
             const string = atob(hash.substring(1).split('?')[0]);
             const object = JSON.parse(string)
-            return object.script;
+            return object;
         } catch (e) {
-            return null;
+            return defaultScriptData;
         }
     },
 
@@ -598,11 +596,14 @@ const app = {
 
         require(['vs/editor/editor.main'], () => {
             // Try parsing script from URL hash or use the default
-            const scriptContent = this._decodeScriptFromHash() || defaultScriptContent;
+            const scriptData = this._decodeScriptFromHash({
+                script: defaultScriptContent,
+                name: "Default Script"
+            });
             
             // Create editor
             this._editor = monaco.editor.create(editorElement, {
-                value: scriptContent,
+                value: scriptData.script,
                 language: 'lua',
                 theme: 'vs-dark',
                 minimap: { enabled: false },
@@ -612,7 +613,7 @@ const app = {
                 acceptSuggestionOnCommitCharacter: true
             });
 
-            this._updateScript(scriptContent);
+            this._updateScript(scriptData);
 
             // Track edits
             this._editor.onDidChangeModelContent(() => {
@@ -690,10 +691,10 @@ const app = {
                     this._changedHashFromUserEdit = false;
                     return;
                 }
-                const script = this._decodeScriptFromHash() || "";
+                const scriptData = this._decodeScriptFromHash();
                 this._changedScriptFromHash = true;
-                this._editor.setValue(script);
-                this._updateScript(script);
+                this._editor.setValue(scriptData.script);
+                this._updateScript(scriptData);
             });
             
             /*
