@@ -199,6 +199,9 @@ const app = {
     _initialized: false,
     _editor: undefined,
     _editCount: 0,
+    _changedHashFromUserEdit: false,
+    _changedScriptFromHash: false,
+    _midiEnabled: false,
 
     initialize: function () {
         // hide spinner, show content
@@ -241,24 +244,41 @@ const app = {
         }
     },
 
+    _togglePlayButton: function (isPlaying) {
+        const playButton = document.getElementById('playButton');
+        const i = playButton.querySelector('i');
+        if (isPlaying) {
+            i.classList.replace('fa-play', 'fa-stop');
+            playButton.classList.add('enabled');
+        } else {
+            i.classList.replace('fa-stop', 'fa-play');
+            playButton.classList.remove('enabled');
+        }
+    },
+
+    _togglePlayback: function () {  
+        const playButton = document.getElementById('playButton');
+        if (!playButton.disabled) {
+            if (backend.isPlaying()) {
+                backend.stopPlaying();
+                this.setStatus("Playback stopped.");
+            } else {
+                backend.startPlaying();
+                this.setStatus("Playing...");
+            }
+            this._togglePlayButton(backend.isPlaying());
+        }
+    },
+
     // Init transport controls
     _initControls: function () {
         // Set up control handlers
         const playButton = document.getElementById('playButton');
-        const stopButton = document.getElementById('stopButton');
         const midiButton = document.getElementById('midiButton');
-        console.assert(playButton && stopButton && midiButton);
-
-        playButton.addEventListener('click', () => {
-            backend.startPlaying();
-            this.setStatus("Playing...");
-            playButton.style.color = 'var(--color-accent)';
-        });
-        stopButton.addEventListener('click', () => {
-            backend.stopPlaying();
-            this.setStatus("Stopped");
-            playButton.style.color = null;
-        });
+        console.assert(playButton && midiButton);
+        
+        playButton.addEventListener('click', () => this._togglePlayback());
+        playButton.title = "Toggle Playback (Ctrl+Shift+Space)";
 
         const bpmInput = document.getElementById('bpmInput');
         console.assert(bpmInput);
@@ -334,50 +354,9 @@ const app = {
         });
 
         let midiAccess = null;
-        let midiEnabled = false;
         let currentMidiNotes = new Set();
 
-        function enableMidi() {
-            if (!navigator.requestMIDIAccess) {
-                return Promise.reject(new Error("Web MIDI API not supported"));
-            }
-            return navigator.requestMIDIAccess()
-                .then(access => {
-                    midiAccess = access;
-                    midiEnabled = true;
-                    midiButton.style.color = 'var(--color-accent)';
-                    // Start listening to MIDI input
-                    for (let input of midiAccess.inputs.values()) {
-                        input.onmidimessage = handleMidiMessage;
-                    }
-                    // stop regular playback
-                    if (backend.isPlaying()) {
-                        backend.stopPlaying();
-                        playButton.style.color = null;
-                    }
-                    app.setStatus("MIDI input enabled. Press one or more notes on your keyboard to play the script...");
-                });
-        }
-
-        function disableMidi() {
-            midiEnabled = false;
-            midiButton.style.color = null;
-            // Stop listening to MIDI input
-            if (midiAccess) {
-                for (let input of midiAccess.inputs.values()) {
-                    input.onmidimessage = null;
-                }
-            }
-            // Release all notes
-            currentMidiNotes.forEach(note => {
-                backend.sendMidiNoteOff(note);
-            });
-            currentMidiNotes.clear();
-            app.setStatus("MIDI input disabled");
-            return Promise.resolve();
-        }
-
-        function handleMidiMessage(message) {
+        const handleMidiMessage = (message) => {
             const data = message.data;
             const status = data[0] & 0xF0;
             const note = data[1];
@@ -394,13 +373,53 @@ const app = {
                 }
             }
         }
+        
+        const enableMidi = () => {
+            if (!navigator.requestMIDIAccess) {
+                return Promise.reject(new Error("Web MIDI API not supported"));
+            }
+            return navigator.requestMIDIAccess()
+                .then(access => {
+                    midiAccess = access;
+                    this._midiEnabled = true;
+                    midiButton.classList.add("enabled");
+                    // Start listening to MIDI input
+                    for (let input of midiAccess.inputs.values()) {
+                        input.onmidimessage = handleMidiMessage;
+                    }
+                    // stop regular playback
+                    if (backend.isPlaying()) {
+                        backend.stopPlaying();
+                    }
+                    app.setStatus("MIDI input enabled. Press one or more notes on your keyboard to play the script...");
+                });
+        }
+
+        const disableMidi = () => {
+            this._midiEnabled = false;
+            midiButton.classList.remove("enabled");
+            // Stop listening to MIDI input
+            if (midiAccess) {
+                for (let input of midiAccess.inputs.values()) {
+                    input.onmidimessage = null;
+                }
+            }
+            // Release all notes
+            currentMidiNotes.forEach(note => {
+                backend.sendMidiNoteOff(note);
+            });
+            currentMidiNotes.clear();
+            app.setStatus("MIDI input disabled");
+            return Promise.resolve();
+        }
+
 
         midiButton.addEventListener('click', () => {
-            if (!midiEnabled) {
+            if (!this._midiEnabled) {
                 enableMidi().then(() => {
                     // Disable play/stop buttons on success
+                    this._togglePlayButton(false);
                     playButton.disabled = true;
-                    stopButton.disabled = true;
                 }).catch(err => {
                     const isError = true;
                     app.setStatus("Failed to access MIDI: " + err, isError);
@@ -409,7 +428,6 @@ const app = {
                 disableMidi().then(() => {
                     // Re-enable play/stop buttons
                     playButton.disabled = false;
-                    stopButton.disabled = false;
                 }).catch(err => {
                     const isError = true;
                     app.setStatus("Failed to release MIDI: " + err, isError);
@@ -453,9 +471,7 @@ const app = {
                 if (newId >= 0) {
                     this.setStatus(`Loaded sample '${file.name}'`);
                     this._initSampleDropdown();
-                    const select = document.getElementById('sampleSelect');
-                    select.value = newId;
-                    backend.updateInstrument(newId);
+                    this._selectInstrument(newId)
                 } else {
                     const isError = true;
                     this.setStatus(`Failed to load sample '${file.name}'. The format may not be supported.`, isError);
@@ -467,6 +483,17 @@ const app = {
             };
             reader.readAsArrayBuffer(file);
         });
+    },
+
+    _selectInstrument: function (id) {
+        if (id === null || id === undefined) return;
+        const select = document.getElementById('sampleSelect');
+        const value = Math.max(0, Math.min(Number(id), select.options.length - 1));
+        
+        select.value = value;
+        backend.updateInstrument(value);
+
+        this.setStatus(`Set new default instrument: '${select.options[value].innerHTML}'`);
     },
 
     // Populate sample dropdown
@@ -485,15 +512,12 @@ const app = {
                 select.appendChild(option);
             });
             select.onchange = (event) => {
-                let id = event.target.value;
-                backend.updateInstrument(Number(id));
-                this.setStatus(`Set new default instrument: '${id}'`);
-
+                this._selectInstrument(event.target.value);
+                this._updateHash();
             };
 
             // set last sample as default instrument
-            select.value = samples[samples.length - 1].id
-            backend.updateInstrument(select.value)
+            this._selectInstrument(samples[samples.length - 1].id)
         } else {
             const option = document.createElement('option');
             option.value = 'none';
@@ -502,6 +526,22 @@ const app = {
             select.onchange = null;
             backend.updateInstrument(-1);
         }
+    },
+
+    _updateScript: function({script, name, instrument}) {
+        this._selectInstrument(instrument);
+        
+        if (backend.isPlaying()) {
+            backend.stopPlaying();
+            backend.updateScriptContent(script);
+            backend.startPlaying();
+        } else {
+            backend.updateScriptContent(script);
+        }
+        this._editor.setScrollPosition({ scrollTop: 0 });
+        this._updateEditCount(0);
+                
+        this.setStatus(`Loaded script: '${name}'.`);
     },
 
     // Set up example scripts list
@@ -517,42 +557,32 @@ const app = {
         quickstartSection.textContent = "Quickstart";
         examplesList.appendChild(quickstartSection);
 
-        let allLinks = [];
-        let loadExample = (link, example) => {
-            allLinks.forEach(link => {
-                link.style.textDecoration = 'none';
-            });
-            link.style.textDecoration = 'underline';
-            this._editor.setValue(example.content);
-            if (backend.isPlaying()) {
-                backend.stopPlaying();
-                backend.updateScriptContent(example.content);
-                backend.startPlaying();
-            } else {
-                backend.updateScriptContent(example.content);
+        const appendExampleLink = (example) => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.textContent = example.name;
+            a.classList.add("example-link")
+            li.appendChild(a);
+            examplesList.appendChild(li);
+            a.onclick = () => {
+                window.location.hash = `#${this._encodeScript({
+                    script: example.content,
+                    name: example.name,
+                    instrument: document.getElementById("sampleSelect").value
+                })}`;
+                document.querySelectorAll(".example-link").forEach(link => {
+                    link.classList.remove("selected")
+                });
+                a.classList.add("selected");
             }
-            this._editor.setScrollPosition({ scrollTop: 0 });
-            this._updateEditCount(0);
-            this.setStatus(`Loaded script: '${example.name}'.`);
-        };
+        }
 
         quickstartExamples.forEach(group => {
             const quickstartGroup = document.createElement('h4');
             quickstartGroup.textContent = group.name;
             examplesList.appendChild(quickstartGroup);
 
-            group.entries.forEach(example => {
-                const li = document.createElement('li');
-                const a = document.createElement('a');
-                a.href = '#';
-                a.textContent = example.name;
-                a.style.color = 'var(--color-link)';
-                a.style.textDecoration = 'none';
-                a.onclick = () => loadExample(a, example);
-                allLinks.push(a)
-                li.appendChild(a);
-                examplesList.appendChild(li);
-            });
+            group.entries.forEach(appendExampleLink);
         });
 
         // Add examples
@@ -560,17 +590,33 @@ const app = {
         examplesSection.textContent = "Examples";
         examplesList.appendChild(examplesSection);
 
-        examples.forEach(example => {
-            const li = document.createElement('li');
-            const a = document.createElement('a');
-            a.href = '#';
-            a.textContent = example.name;
-            a.style.color = 'var(--color-link)';
-            a.style.textDecoration = 'none';
-            a.onclick = () => loadExample(a, example);
-            allLinks.push(a)
-            li.appendChild(a);
-            examplesList.appendChild(li);
+        examples.forEach(appendExampleLink);
+    },
+
+    _encodeScript: function ({script, name, instrument}) {
+        return btoa(JSON.stringify({ script, name, instrument }));
+    },
+    
+    _decodeScriptFromHash: function (defaultScriptData = {script: "", name: "untitled", instrument: null}) {
+        const hash = window.location.hash;
+        if (hash.length < 2) {
+            return defaultScriptData;
+        }
+        try {
+            const string = atob(hash.substring(1).split('?')[0]);
+            const object = JSON.parse(string)
+            return object;
+        } catch (e) {
+            return defaultScriptData;
+        }
+    },
+
+    _updateHash: function () {
+        this._changedHashFromUserEdit = true;
+        window.location.hash = this._encodeScript({
+            script: this._editor.getValue(),
+            name: "custom",
+            instrument: document.getElementById("sampleSelect").value
         });
     },
 
@@ -581,10 +627,17 @@ const app = {
         let editorElement = document.getElementById('editor');
         console.assert(editorElement);
 
+
         require(['vs/editor/editor.main'], () => {
+            // Try parsing script from URL hash or use the default
+            const scriptData = this._decodeScriptFromHash({
+                script: defaultScriptContent,
+                name: "Default Script",
+            });
+            
             // Create editor
             this._editor = monaco.editor.create(editorElement, {
-                value: defaultScriptContent,
+                value: scriptData.script,
                 language: 'lua',
                 theme: 'vs-dark',
                 minimap: { enabled: false },
@@ -593,10 +646,19 @@ const app = {
                 wordWrap: 'on',
                 acceptSuggestionOnCommitCharacter: true
             });
+
+            this._updateScript(scriptData);
+
             // Track edits
             this._editor.onDidChangeModelContent(() => {
-                this._updateEditCount(this._editCount + 1)
+                if (this._changedScriptFromHash) {
+                    this._changedScriptFromHash = false;
+                    return;
+                }
+                this._updateHash();
+                this._updateEditCount(this._editCount + 1);
             });
+            
             // Handle Ctrl+Enter
             const commitAction = {
                 id: "Apply Script Changes",
@@ -635,17 +697,8 @@ const app = {
                     monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Space,
                 ],
                 run: () => {
-                    const playButton = document.getElementById('playButton');
-                    if (!playButton.disabled) {
-                        if (backend.isPlaying()) {
-                            backend.stopPlaying();
-                            playButton.style.color = null;
-                        }
-                        else {
-                            backend.startPlaying();
-                            playButton.style.color = 'var(--color-accent)';
-                        }
-                    }
+                    if (this._midiEnabled) return;
+                    this._togglePlayback()
                 },
             }
             this._editor.addAction(playStopAction);
@@ -657,6 +710,17 @@ const app = {
                 }
             });
 
+            window.addEventListener("hashchange", () => {
+                if (this._changedHashFromUserEdit) {
+                    this._changedHashFromUserEdit = false;
+                    return;
+                }
+                const scriptData = this._decodeScriptFromHash();
+                this._changedScriptFromHash = true;
+                this._editor.setValue(scriptData.script);
+                this._updateScript(scriptData);
+            });
+            
             /*
             // TODO: Register a simple autocomplete provider for Lua for `pattern`
             monaco.languages.registerCompletionItemProvider('lua', {
