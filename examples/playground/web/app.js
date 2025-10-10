@@ -201,6 +201,7 @@ const app = {
     _editCount: 0,
     _changedHashFromUserEdit: false,
     _changedScriptFromHash: false,
+    _midiEnabled: false,
 
     initialize: function () {
         // hide spinner, show content
@@ -243,24 +244,41 @@ const app = {
         }
     },
 
+    _togglePlayButton: function (isPlaying) {
+        const playButton = document.getElementById('playButton');
+        const i = playButton.querySelector('i');
+        if (isPlaying) {
+            i.classList.replace('fa-play', 'fa-stop');
+            playButton.classList.add('enabled');
+        } else {
+            i.classList.replace('fa-stop', 'fa-play');
+            playButton.classList.remove('enabled');
+        }
+    },
+
+    _togglePlayback: function () {  
+        const playButton = document.getElementById('playButton');
+        if (!playButton.disabled) {
+            if (backend.isPlaying()) {
+                backend.stopPlaying();
+                this.setStatus("Playback stopped.");
+            } else {
+                backend.startPlaying();
+                this.setStatus("Playing...");
+            }
+            this._togglePlayButton(backend.isPlaying());
+        }
+    },
+
     // Init transport controls
     _initControls: function () {
         // Set up control handlers
         const playButton = document.getElementById('playButton');
-        const stopButton = document.getElementById('stopButton');
         const midiButton = document.getElementById('midiButton');
-        console.assert(playButton && stopButton && midiButton);
-
-        playButton.addEventListener('click', () => {
-            backend.startPlaying();
-            this.setStatus("Playing...");
-            playButton.style.color = 'var(--color-accent)';
-        });
-        stopButton.addEventListener('click', () => {
-            backend.stopPlaying();
-            this.setStatus("Stopped");
-            playButton.style.color = null;
-        });
+        console.assert(playButton && midiButton);
+        
+        playButton.addEventListener('click', () => this._togglePlayback());
+        playButton.title = "Toggle Playback (Ctrl+Shift+Space)";
 
         const bpmInput = document.getElementById('bpmInput');
         console.assert(bpmInput);
@@ -336,50 +354,9 @@ const app = {
         });
 
         let midiAccess = null;
-        let midiEnabled = false;
         let currentMidiNotes = new Set();
 
-        function enableMidi() {
-            if (!navigator.requestMIDIAccess) {
-                return Promise.reject(new Error("Web MIDI API not supported"));
-            }
-            return navigator.requestMIDIAccess()
-                .then(access => {
-                    midiAccess = access;
-                    midiEnabled = true;
-                    midiButton.style.color = 'var(--color-accent)';
-                    // Start listening to MIDI input
-                    for (let input of midiAccess.inputs.values()) {
-                        input.onmidimessage = handleMidiMessage;
-                    }
-                    // stop regular playback
-                    if (backend.isPlaying()) {
-                        backend.stopPlaying();
-                        playButton.style.color = null;
-                    }
-                    app.setStatus("MIDI input enabled. Press one or more notes on your keyboard to play the script...");
-                });
-        }
-
-        function disableMidi() {
-            midiEnabled = false;
-            midiButton.style.color = null;
-            // Stop listening to MIDI input
-            if (midiAccess) {
-                for (let input of midiAccess.inputs.values()) {
-                    input.onmidimessage = null;
-                }
-            }
-            // Release all notes
-            currentMidiNotes.forEach(note => {
-                backend.sendMidiNoteOff(note);
-            });
-            currentMidiNotes.clear();
-            app.setStatus("MIDI input disabled");
-            return Promise.resolve();
-        }
-
-        function handleMidiMessage(message) {
+        const handleMidiMessage = (message) => {
             const data = message.data;
             const status = data[0] & 0xF0;
             const note = data[1];
@@ -396,13 +373,53 @@ const app = {
                 }
             }
         }
+        
+        const enableMidi = () => {
+            if (!navigator.requestMIDIAccess) {
+                return Promise.reject(new Error("Web MIDI API not supported"));
+            }
+            return navigator.requestMIDIAccess()
+                .then(access => {
+                    midiAccess = access;
+                    this._midiEnabled = true;
+                    midiButton.classList.add("enabled");
+                    // Start listening to MIDI input
+                    for (let input of midiAccess.inputs.values()) {
+                        input.onmidimessage = handleMidiMessage;
+                    }
+                    // stop regular playback
+                    if (backend.isPlaying()) {
+                        backend.stopPlaying();
+                    }
+                    app.setStatus("MIDI input enabled. Press one or more notes on your keyboard to play the script...");
+                });
+        }
+
+        const disableMidi = () => {
+            this._midiEnabled = false;
+            midiButton.classList.remove("enabled");
+            // Stop listening to MIDI input
+            if (midiAccess) {
+                for (let input of midiAccess.inputs.values()) {
+                    input.onmidimessage = null;
+                }
+            }
+            // Release all notes
+            currentMidiNotes.forEach(note => {
+                backend.sendMidiNoteOff(note);
+            });
+            currentMidiNotes.clear();
+            app.setStatus("MIDI input disabled");
+            return Promise.resolve();
+        }
+
 
         midiButton.addEventListener('click', () => {
-            if (!midiEnabled) {
+            if (!this._midiEnabled) {
                 enableMidi().then(() => {
                     // Disable play/stop buttons on success
+                    this._togglePlayButton(false);
                     playButton.disabled = true;
-                    stopButton.disabled = true;
                 }).catch(err => {
                     const isError = true;
                     app.setStatus("Failed to access MIDI: " + err, isError);
@@ -411,7 +428,6 @@ const app = {
                 disableMidi().then(() => {
                     // Re-enable play/stop buttons
                     playButton.disabled = false;
-                    stopButton.disabled = false;
                 }).catch(err => {
                     const isError = true;
                     app.setStatus("Failed to release MIDI: " + err, isError);
@@ -681,17 +697,8 @@ const app = {
                     monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Space,
                 ],
                 run: () => {
-                    const playButton = document.getElementById('playButton');
-                    if (!playButton.disabled) {
-                        if (backend.isPlaying()) {
-                            backend.stopPlaying();
-                            playButton.style.color = null;
-                        }
-                        else {
-                            backend.startPlaying();
-                            playButton.style.color = 'var(--color-accent)';
-                        }
-                    }
+                    if (this._midiEnabled) return;
+                    this._togglePlayback()
                 },
             }
             this._editor.addAction(playStopAction);

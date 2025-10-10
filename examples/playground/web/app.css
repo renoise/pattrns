@@ -182,8 +182,33 @@ code {
     font-size: larger;
 }
 
-.transport>#stopButton {
-    font-size: larger;
+.toggleButton {
+    background-color: transparent;
+    color: var(--color-text);
+}
+
+.toggleButton:hover {
+    color: var(--color-accent);
+    background-color: var(--color-bg);
+}
+
+.toggleButton:disabled:hover {
+    background-color: transparent;
+    color: var(--color-grid);
+    cursor: not-allowed;
+}
+
+.toggleButton.enabled {
+    background-color: var(--color-accent);
+    color: var(--color-bg);
+}
+
+#midiButton.enabled #blackKeys {
+    fill: var(--color-accent);
+}
+#midiButton.enabled #whiteKeys {
+    fill: var(--color-bg);
+    stroke: var(--color-accent);
 }
 
 .bpm-control {
