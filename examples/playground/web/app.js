@@ -455,9 +455,7 @@ const app = {
                 if (newId >= 0) {
                     this.setStatus(`Loaded sample '${file.name}'`);
                     this._initSampleDropdown();
-                    const select = document.getElementById('sampleSelect');
-                    select.value = newId;
-                    backend.updateInstrument(newId);
+                    this._selectInstrument(newId)
                 } else {
                     const isError = true;
                     this.setStatus(`Failed to load sample '${file.name}'. The format may not be supported.`, isError);
@@ -469,6 +467,17 @@ const app = {
             };
             reader.readAsArrayBuffer(file);
         });
+    },
+
+    _selectInstrument: function (id) {
+        if (id === null || id === undefined) return;
+        const select = document.getElementById('sampleSelect');
+        const value = Math.max(0, Math.min(Number(id), select.options.length - 1));
+        
+        select.value = value;
+        backend.updateInstrument(value);
+
+        this.setStatus(`Set new default instrument: '${select.options[value].innerHTML}'`);
     },
 
     // Populate sample dropdown
@@ -487,15 +496,12 @@ const app = {
                 select.appendChild(option);
             });
             select.onchange = (event) => {
-                let id = event.target.value;
-                backend.updateInstrument(Number(id));
-                this.setStatus(`Set new default instrument: '${id}'`);
-
+                this._selectInstrument(event.target.value);
+                this._updateHash();
             };
 
             // set last sample as default instrument
-            select.value = samples[samples.length - 1].id
-            backend.updateInstrument(select.value)
+            this._selectInstrument(samples[samples.length - 1].id)
         } else {
             const option = document.createElement('option');
             option.value = 'none';
@@ -506,7 +512,9 @@ const app = {
         }
     },
 
-    _updateScript: function({script, name}) {
+    _updateScript: function({script, name, instrument}) {
+        this._selectInstrument(instrument);
+        
         if (backend.isPlaying()) {
             backend.stopPlaying();
             backend.updateScriptContent(script);
@@ -516,6 +524,7 @@ const app = {
         }
         this._editor.setScrollPosition({ scrollTop: 0 });
         this._updateEditCount(0);
+                
         this.setStatus(`Loaded script: '${name}'.`);
     },
 
@@ -532,24 +541,24 @@ const app = {
         quickstartSection.textContent = "Quickstart";
         examplesList.appendChild(quickstartSection);
 
-        let allLinks = [];
-        let loadExample = (link) => {
-            allLinks.forEach(link => {
-                link.style.textDecoration = 'none';
-            });
-            link.style.textDecoration = 'underline';
-        };
-
         const appendExampleLink = (example) => {
             const li = document.createElement('li');
             const a = document.createElement('a');
-            a.href = `#${this._encodeScript(example.content, example.name)}`;
             a.textContent = example.name;
-            a.style.color = 'var(--color-link)';
-            a.style.textDecoration = 'none';
-            allLinks.push(a)
+            a.classList.add("example-link")
             li.appendChild(a);
             examplesList.appendChild(li);
+            a.onclick = () => {
+                window.location.hash = `#${this._encodeScript({
+                    script: example.content,
+                    name: example.name,
+                    instrument: document.getElementById("sampleSelect").value
+                })}`;
+                document.querySelectorAll(".example-link").forEach(link => {
+                    link.classList.remove("selected")
+                });
+                a.classList.add("selected");
+            }
         }
 
         quickstartExamples.forEach(group => {
@@ -568,11 +577,11 @@ const app = {
         examples.forEach(appendExampleLink);
     },
 
-    _encodeScript: function (script, name) {
-        return btoa(JSON.stringify({ script, name }));
+    _encodeScript: function ({script, name, instrument}) {
+        return btoa(JSON.stringify({ script, name, instrument }));
     },
     
-    _decodeScriptFromHash: function (defaultScriptData = {script: "", name: "untitled"}) {
+    _decodeScriptFromHash: function (defaultScriptData = {script: "", name: "untitled", instrument: null}) {
         const hash = window.location.hash;
         if (hash.length < 2) {
             return defaultScriptData;
@@ -584,6 +593,15 @@ const app = {
         } catch (e) {
             return defaultScriptData;
         }
+    },
+
+    _updateHash: function () {
+        this._changedHashFromUserEdit = true;
+        window.location.hash = this._encodeScript({
+            script: this._editor.getValue(),
+            name: "custom",
+            instrument: document.getElementById("sampleSelect").value
+        });
     },
 
     // Initialize Monaco editor
@@ -598,7 +616,7 @@ const app = {
             // Try parsing script from URL hash or use the default
             const scriptData = this._decodeScriptFromHash({
                 script: defaultScriptContent,
-                name: "Default Script"
+                name: "Default Script",
             });
             
             // Create editor
@@ -621,8 +639,7 @@ const app = {
                     this._changedScriptFromHash = false;
                     return;
                 }
-                this._changedHashFromUserEdit = true;
-                window.location.hash = this._encodeScript(this._editor.getValue());
+                this._updateHash();
                 this._updateEditCount(this._editCount + 1);
             });
             

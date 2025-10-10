@@ -304,6 +304,7 @@ code {
     overflow-y: auto;
     min-width: 260px;
     max-width: 10%;
+    scrollbar-color: var(--color-accent) var(--color-bg);
 }
 
 .examples-list {
@@ -318,18 +319,35 @@ code {
 
 .examples-list>h4 {
     margin: 5px 0px;
+    padding-left: 5px;
+}
+
+.examples-list {
+    list-style-type: square;
 }
 
 .examples-list>li {
     padding: 0px 5px;
 }
 
-.examples-list a {
-    color: var(--color-accent);
+.examples-list>li::marker {
+    color: var(--color-grid);
+}
+
+.example-link {
+    cursor: pointer;
+    color: var(--color-link);
     text-decoration: none;
 }
 
-.examples-list a:hover {
+.example-link.selected {
+    text-decoration: underline;
+}
+.example-link.selected::marker {
+    color: var(--color-accent);
+}
+
+.example-link:hover {
     text-decoration: underline;
 }
 
