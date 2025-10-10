@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "emscripten: run build script",
+			"command": "${workspaceFolder}/build.sh",
+			"windows": {
+				"command": "${workspaceFolder}/build.ps1",
+			}
+		},
+		{
+			"type": "shell",
+			"group": "build",
+			"label": "emscripten: run serve script",
+			"isBackground": true,
+			"command": "${workspaceFolder}/serve.sh",
+			"windows": {
+				"command": "${workspaceFolder}/serve.ps1",
+			}
+		}
+	]
+}
