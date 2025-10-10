@@ -199,7 +199,8 @@ const app = {
     _initialized: false,
     _editor: undefined,
     _editCount: 0,
-    _writtenHash: false,
+    _changedHashFromUserEdit: false,
+    _changedScriptFromHash: false,
 
     initialize: function () {
         // hide spinner, show content
@@ -505,6 +506,19 @@ const app = {
         }
     },
 
+    _updateScript: function(script, name = "untitled") {
+        if (backend.isPlaying()) {
+            backend.stopPlaying();
+            backend.updateScriptContent(script);
+            backend.startPlaying();
+        } else {
+            backend.updateScriptContent(script);
+        }
+        this._editor.setScrollPosition({ scrollTop: 0 });
+        this._updateEditCount(0);
+        this.setStatus(`Loaded script: '${name}'.`);
+    },
+
     // Set up example scripts list
     _initExampleScripts: function () {
         const examples = backend.getExampleScripts();
@@ -524,16 +538,7 @@ const app = {
                 link.style.textDecoration = 'none';
             });
             link.style.textDecoration = 'underline';
-            if (backend.isPlaying()) {
-                backend.stopPlaying();
-                backend.updateScriptContent(example.content);
-                backend.startPlaying();
-            } else {
-                backend.updateScriptContent(example.content);
-            }
-            this._editor.setScrollPosition({ scrollTop: 0 });
-            this._updateEditCount(0);
-            this.setStatus(`Loaded script: '${example.name}'.`);
+            this._updateScript(example.content, example.name);
         };
 
         const appendExampleLink = (example) => {
@@ -583,11 +588,6 @@ const app = {
         }
     },
 
-    _writeHash: function (script) {
-        this._writtenHash = true;
-        window.location.hash = this._encodeScript(script);
-    },
-
     // Initialize Monaco editor
     _initEditor: function () {
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' } });
@@ -611,11 +611,20 @@ const app = {
                 wordWrap: 'on',
                 acceptSuggestionOnCommitCharacter: true
             });
+
+            this._updateScript(scriptContent);
+
             // Track edits
             this._editor.onDidChangeModelContent(() => {
-                this._writeHash(this._editor.getValue());
-                this._updateEditCount(this._editCount + 1)
+                if (this._changedScriptFromHash) {
+                    this._changedScriptFromHash = false;
+                    return;
+                }
+                this._changedHashFromUserEdit = true;
+                window.location.hash = this._encodeScript(this._editor.getValue());
+                this._updateEditCount(this._editCount + 1);
             });
+            
             // Handle Ctrl+Enter
             const commitAction = {
                 id: "Apply Script Changes",
@@ -677,13 +686,14 @@ const app = {
             });
 
             window.addEventListener("hashchange", () => {
-                // Ignore hash changes that were triggered by user edits
-                if (this._writtenHash) {
-                    this._writtenHash = false;
-                } else {
-                    const script = this._decodeScriptFromHash();
-                    this._editor.setValue(script || "")
+                if (this._changedHashFromUserEdit) {
+                    this._changedHashFromUserEdit = false;
+                    return;
                 }
+                const script = this._decodeScriptFromHash() || "";
+                this._changedScriptFromHash = true;
+                this._editor.setValue(script);
+                this._updateScript(script);
             });
             
             /*
