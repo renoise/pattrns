@@ -27,11 +27,13 @@ done
 ## build
 
 # Emscripten pthread need atomics and bulk-memory features target features.
-# all other emscripten linker flags are specified in `build.rs`` 
-export RUSTFLAGS="-Ctarget-feature=+atomics,+bulk-memory"
+# all other emscripten linker flags are specified in `build.rs`
+# `panic=abort` helps trimming down the generated code in size. With abort, 
+# errors are actually also better traceable in debug builds...
+export RUSTFLAGS="-Ctarget-feature=+atomics,+bulk-memory -Cpanic=abort"
 
 # Use build-std to also compile the std libs with the above rust flags for pthreads support.
-cargo +nightly -Z build-std \
+cargo +nightly -Z build-std=std,panic_abort \
   build --profile $PROFILE --target wasm32-unknown-emscripten
 
 ## copy

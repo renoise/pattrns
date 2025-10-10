@@ -5,10 +5,12 @@ fn main() {
     if target.contains("emscripten") {
         // debug options
         if profile == "debug" {
+            println!("cargo::rustc-link-arg=-sSAFE_HEAP=1");
             println!("cargo::rustc-link-arg=-sASSERTIONS=2");
         }
         // compile options
         println!("cargo::rustc-link-arg=-fexceptions");
+        println!("cargo::rustc-link-arg=-sNO_DISABLE_EXCEPTION_CATCHING");
         println!("cargo::rustc-link-arg=-sUSE_PTHREADS=1");
         println!("cargo::rustc-link-arg=-sPTHREAD_POOL_SIZE=4");
         // memory options
@@ -23,8 +25,6 @@ fn main() {
         // exports
         println!("cargo::rustc-link-arg=--no-entry");
         let exports = [
-            "ccall",
-            "UTF8ToString",
             "_free_cstring",
             "_initialize_playground",
             "_shutdown_playground",
@@ -50,6 +50,7 @@ fn main() {
             "cargo::rustc-link-arg=-sEXPORTED_FUNCTIONS={}",
             exports.join(",")
         );
+        println!("cargo::rustc-link-arg=-sEXPORTED_RUNTIME_METHODS=ccall,UTF8ToString");
         // assets
         println!(
             "cargo::rustc-link-arg=--preload-file={}/assets@/assets",
