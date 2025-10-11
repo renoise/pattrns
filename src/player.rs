@@ -23,7 +23,8 @@ use phonic::{
 
 use crate::{
     time::{SampleTimeBase, SampleTimeDisplay},
-    BeatTimeBase, Event, InstrumentId, Note, PatternEvent, SampleTime, Sequence,
+    BeatTimeBase, Event, ExactSampleTime, InstrumentId, Note, PatternEvent, PatternSlot,
+    SampleTime, Sequence,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -287,17 +288,20 @@ impl SamplePlayer {
         self.sample_root_note = root_note;
     }
 
-    /// Stop all currently playing back sources.
+    /// Stop all currently playing sources.
     pub fn stop_all_sources(&mut self) {
-        let _ = self.inner.stop_all_sources();
+        self.inner
+            .stop_all_sources()
+            .expect("Failed to stop all sources");
         for notes in &mut self.playing_notes {
             notes.clear();
         }
     }
 
-    /// Stop all currently playing back sources in the given pattern slot index.
+    /// Stop all currently playing sources in the given pattern slot index.
     pub fn stop_sources_in_pattern_slot(&mut self, pattern_index: usize) {
         for (playback_id, _) in self.playing_notes[pattern_index].values() {
+            // ignore result: source maybe already is stopped
             let _ = self.inner.stop_source(*playback_id, None);
         }
         self.playing_notes[pattern_index].clear();
@@ -310,13 +314,21 @@ impl SamplePlayer {
         time_base: &dyn SampleTimeBase,
         reset_playback_pos: bool,
     ) {
+        let previous_sequence = None;
         let dont_stop = || false;
-        self.run_until(sequence, time_base, reset_playback_pos, dont_stop);
+        self.run_until(
+            previous_sequence,
+            sequence,
+            time_base,
+            reset_playback_pos,
+            dont_stop,
+        );
     }
 
     /// Run the given sequence until it stops or the passed stop condition function returns true.
     pub fn run_until<StopFn: Fn() -> bool>(
         &mut self,
+        previous_sequence: Option<&mut Sequence>,
         sequence: &mut Sequence,
         time_base: &dyn SampleTimeBase,
         reset_playback_pos: bool,
@@ -328,7 +340,12 @@ impl SamplePlayer {
             self.reset_playback_position(sequence);
             log::debug!(target: "Player", "Resetting playback pos");
         } else {
-            self.prepare_run_until_time(sequence, self.emitted_sample_time);
+            self.prepare_run_until_time(
+                previous_sequence,
+                sequence,
+                self.playback_sample_time,
+                self.emitted_sample_time,
+            );
             log::debug!(target: "Player",
                 "Advance sequence to time {:.2}",
                 time_base.samples_to_seconds(self.emitted_sample_time)
@@ -373,23 +390,76 @@ impl SamplePlayer {
     }
 
     /// Initialize the given sequence for playback with `run_until_time`.
-    /// This seeks the sequence to the given position and keeps track of internal playback state.
-    pub fn prepare_run_until_time(&mut self, sequence: &mut Sequence, sample_time: u64) {
-        // match playing notes state to the passed patterns
+    ///
+    /// This seeks the given sequence to the given sample time, stops still playing notes
+    /// and keeps track of internal playback state.
+    ///
+    /// When `previous_sequence` is set, it's run to lookup note-off and stop events that
+    /// would have happened in future to stop pending notes. When its none, all playing notes
+    /// will be stopped at the time the new sequence starts playing.
+    pub fn prepare_run_until_time(
+        &mut self,
+        previous_sequence: Option<&mut Sequence>,
+        sequence: &mut Sequence,
+        time_offset: SampleTime,
+        time: SampleTime,
+    ) {
+        // stop playing notes, if needed
+        if self.playing_notes.iter().any(|notes| !notes.is_empty()) {
+            // Process note stop events from the previous sequence
+            let stop_time = if let Some(previous_sequence) = previous_sequence {
+                // Get maximum step length in samples of all currently playing back patterns
+                let mut max_step_length: ExactSampleTime = 0.0;
+                for pattern_slot in previous_sequence.current_phrase().pattern_slots() {
+                    if let PatternSlot::Pattern(pattern) = pattern_slot {
+                        max_step_length = max_step_length.max(pattern.borrow().step_length());
+                    }
+                }
+                // Run sequence and handle note-offs only to stop playing notes
+                let note_stope_lookup_time =
+                    time_offset + time + max_step_length.ceil() as SampleTime;
+                previous_sequence.consume_events_until_time(
+                    note_stope_lookup_time,
+                    &mut |pattern_index, pattern_event| {
+                        if !self.playing_notes[pattern_index].is_empty() {
+                            self.handle_pattern_event_note_offs(
+                                time_offset,
+                                pattern_index,
+                                pattern_event,
+                            );
+                        }
+                    },
+                );
+                // stop remaining notes at the lookup time range's end
+                note_stope_lookup_time
+            } else {
+                // stop remaining notes at the time the new sequence starts
+                time_offset + time
+            };
+            // stop remaining playing notes at the time we're applying the new sequence
+            for playing_notes in &mut self.playing_notes {
+                for (playback_id, _) in playing_notes.values() {
+                    // ignore result: source maybe already is stopped
+                    let _ = self.inner.stop_source(*playback_id, stop_time);
+                }
+                playing_notes.clear();
+            }
+        }
+        // update playing notes state to fit the new sequence
         self.playing_notes
-            .resize(sequence.phrase_pattern_slot_count(), HashMap::new());
-        // move new phase to our previously played time
-        sequence.advance_until_time(sample_time);
+            .resize_with(sequence.phrase_pattern_slot_count(), HashMap::new);
+        // and finally prepare the new sequence by advancing it to the target time
+        sequence.advance_until_time(time);
     }
 
-    /// Manually seek the given sequence to the  given time offset and actual position.
+    /// Manually seek the given sequence to the given time offset and actual position.
     pub fn advance_until_time(&mut self, sequence: &mut Sequence, time: SampleTime) {
         self.stop_all_sources();
         sequence.advance_until_time(time);
     }
 
     /// Manually run the given sequence with the given time offset and actual position.
-    /// When exchanging the seuquence, call `prepare_run_until_time` before calling `run_until_time`.
+    /// When exchanging the sequence, call `prepare_run_until_time` before calling `run_until_time`.
     pub fn run_until_time(
         &mut self,
         sequence: &mut Sequence,
@@ -400,6 +470,37 @@ impl SamplePlayer {
         sequence.consume_events_until_time(time, &mut |pattern_index, pattern_event| {
             self.handle_pattern_event(pattern_index, pattern_event, time_base, time_offset);
         });
+    }
+
+    /// Handle pattern event note offs and new note actions only, skipping note-ons.
+    fn handle_pattern_event_note_offs(
+        &mut self,
+        time_offset: u64,
+        pattern_index: usize,
+        pattern_event: PatternEvent,
+    ) {
+        let playing_notes_in_pattern = &mut self.playing_notes[pattern_index];
+        if let Some(Event::NoteEvents(notes)) = pattern_event.event {
+            for (voice_index, note_event) in notes.iter().enumerate() {
+                let note_event = match note_event {
+                    None => continue,
+                    Some(note_event) => note_event,
+                };
+                // Handle note off or stop action only
+                if note_event.note.is_note_off()
+                    || (note_event.note.is_note_on()
+                        && self.new_note_action != NewNoteAction::Continue)
+                {
+                    if let Some((playback_id, _)) = playing_notes_in_pattern.get(&voice_index) {
+                        // ignore result: source maybe already is stopped
+                        let _ = self
+                            .inner
+                            .stop_source(*playback_id, time_offset + pattern_event.time);
+                        playing_notes_in_pattern.remove(&voice_index);
+                    }
+                }
+            }
+        }
     }
 
     /// Handle a single pattern event from the sequence
@@ -437,6 +538,7 @@ impl SamplePlayer {
                         && self.new_note_action != NewNoteAction::Continue)
                 {
                     if let Some((playback_id, _)) = playing_notes_in_pattern.get(&voice_index) {
+                        // ignore result: source maybe already is stopped
                         let _ = self
                             .inner
                             .stop_source(*playback_id, time_offset + pattern_event.time);
@@ -496,13 +598,11 @@ impl SamplePlayer {
     }
 
     fn reset_playback_position(&mut self, sequence: &Sequence) {
+        // stop whatever is playing in case we're restarting
+        self.stop_all_sources();
         // rebuild playing notes vec
         self.playing_notes
-            .resize(sequence.phrase_pattern_slot_count(), HashMap::new());
-        // stop whatever is playing in case we're restarting
-        self.inner
-            .stop_all_sources()
-            .expect("failed to stop all playing samples");
+            .resize_with(sequence.phrase_pattern_slot_count(), HashMap::new);
         // fetch player's actual position and use it as start offset
         self.playback_sample_time = self.inner.output_sample_frame_position();
         self.emitted_sample_time = 0;

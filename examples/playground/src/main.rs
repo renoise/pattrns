@@ -416,8 +416,10 @@ impl Playground {
 
     /// Updates the script content and marks it as changed to trigger recompilation.
     pub fn update_script_content(&mut self, content: String) {
-        self.script_content = content;
-        self.script_changed = true;
+        if self.script_content != content {
+            self.script_content = content;
+            self.script_changed = true;
+        }
     }
 
     /// Load a sample from a raw file buffer and add it to the pool
@@ -575,8 +577,12 @@ impl Playground {
                 BeatTimeStep::Bar(4.0),
             )],
         );
-        self.player
-            .prepare_run_until_time(&mut sequence, self.emitted_sample_time);
+        self.player.prepare_run_until_time(
+            self.sequence.take().as_mut(),
+            &mut sequence,
+            self.output_start_sample_time,
+            self.emitted_sample_time,
+        );
         self.sequence.replace(sequence);
         self.pattern.replace(pattern);
         // reset all update flags: we're fully up to date now.
