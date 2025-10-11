@@ -45,12 +45,22 @@ impl Sequence {
         }
     }
 
-    /// Read-only access to our phrases.
+    /// Read-only access to the currently played back phrase.
+    pub fn current_phrase(&self) -> &Phrase {
+        &self.phrases[self.phrase_index]
+    }
+
+    /// Read-only access to the currently played back phrase.
+    pub fn current_phrase_mut(&mut self) -> &mut Phrase {
+        &mut self.phrases[self.phrase_index]
+    }
+
+    /// Read-only access to all phrases.
     pub fn phrases(&self) -> &[Phrase] {
         &self.phrases
     }
 
-    /// Mut access to our phrases.
+    /// Mut access to all phrases.
     pub fn phrases_mut(&mut self) -> &mut [Phrase] {
         &mut self.phrases
     }
@@ -146,14 +156,6 @@ impl Sequence {
         for phrase in &mut self.phrases {
             phrase.reset();
         }
-    }
-
-    fn current_phrase(&self) -> &Phrase {
-        &self.phrases[self.phrase_index]
-    }
-
-    fn current_phrase_mut(&mut self) -> &mut Phrase {
-        &mut self.phrases[self.phrase_index]
     }
 
     fn samples_until_next_phrase(&self, time: u64) -> (u64, u64) {
