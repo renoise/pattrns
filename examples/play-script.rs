@@ -105,6 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     // (re)run all scripts
+    let mut previous_sequence = None;
     while !stop_running.load(Ordering::Relaxed) {
         if script_files_changed.load(Ordering::Relaxed) {
             script_files_changed.store(false, Ordering::Relaxed);
@@ -137,10 +138,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // wrap phrase into a sequence
         let mut sequence = Sequence::new(beat_time, vec![phrase]);
 
+        // run until we got a stop signal or on script file changes
         let reset_playback_pos = false;
-        player.run_until(&mut sequence, &beat_time, reset_playback_pos, || {
-            script_files_changed.load(Ordering::Relaxed) || stop_running.load(Ordering::Relaxed)
-        });
+        player.run_until(
+            previous_sequence.as_mut(),
+            &mut sequence,
+            &beat_time,
+            reset_playback_pos,
+            || script_files_changed.load(Ordering::Relaxed) || stop_running.load(Ordering::Relaxed),
+        );
+
+        // memorize previous sequence for swapping
+        previous_sequence.replace(sequence);
     }
 
     #[cfg(feature = "dhat-profiler")]

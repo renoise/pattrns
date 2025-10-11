@@ -254,10 +254,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     // play the sequence and dump events to stdout
+    let previous_sequence = None;
     let reset_playback_pos = false;
-    player.run_until(&mut sequence, &beat_time, reset_playback_pos, || {
-        stop_running.load(Ordering::Relaxed)
-    });
+    player.run_until(
+        previous_sequence,
+        &mut sequence,
+        &beat_time,
+        reset_playback_pos,
+        || stop_running.load(Ordering::Relaxed),
+    );
 
     #[cfg(feature = "dhat-profiler")]
     drop(profiler);
