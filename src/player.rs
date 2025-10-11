@@ -150,15 +150,20 @@ impl SamplePool {
 // -------------------------------------------------------------------------------------------------
 
 /// Sample player's behavior when playing a new note on the same voice channel.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NewNoteAction {
     /// Continue playing the old note and start a new one.
-    #[default]
     Continue,
     /// Stop the playing note before starting a new one.
     Stop,
     /// Stop the playing note before with the given fade-out duration
     Off(Option<Duration>),
+}
+
+impl Default for NewNoteAction {
+    fn default() -> Self {
+        Self::Off(Some(Duration::from_millis(100)))
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
