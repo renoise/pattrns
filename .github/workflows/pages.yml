@@ -2,9 +2,9 @@ name: Build & Deploy Docs
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "dev"]
   pull_request:
-    branches: ["master"]
+    branches: ["master", "dev"]
   workflow_dispatch:
 
 # Queue deployments, but never cancel one in progress
