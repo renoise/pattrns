@@ -2,7 +2,7 @@ name: Build & Test
 
 on:
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "dev" ]
     
 env:
   CARGO_TERM_COLOR: always
