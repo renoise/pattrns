@@ -232,7 +232,7 @@ impl Target {
     pub fn equal_key(&self, other: &Self) -> bool {
         match (self, other) {
             // both are indices: compare index values
-            (Self::Index(a), Self::Index(b)) => a == b,
+            (Self::Index(_), Self::Index(_)) => true,
             // both are names: compare names only
             (Self::Named(a, _), Self::Named(b, _)) => a == b,
             _ => false,
@@ -2637,7 +2637,6 @@ mod test {
             .with_note(9, 4)
             .with_targets(vec![
                 Target::from_index(1),
-                Target::from_index(2),
                 Target::from_name("Target".into()),
             ])]]],
         )?;
@@ -2647,18 +2646,10 @@ mod test {
             vec![
                 vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
                     .with_note(9, 4)
-                    .with_targets(vec![
-                        Target::from_index(1),
-                        Target::from_index(2),
-                        Target::from_index(3),
-                    ])]],
+                    .with_targets(vec![Target::from_index(1)])]],
                 vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
                     .with_note(9, 4)
-                    .with_targets(vec![
-                        Target::from_index(1),
-                        Target::from_index(2),
-                        Target::from_index(4),
-                    ])]],
+                    .with_targets(vec![Target::from_index(1)])]],
             ],
         )?;
 
@@ -2671,10 +2662,10 @@ mod test {
                     .with_target(Target::from_index(1)),
                 Event::at(Fraction::new(1, 4), Fraction::new(1, 4))
                     .with_note(11, 4)
-                    .with_targets(vec![Target::from_index(1), Target::from_index(2)]),
+                    .with_targets(vec![Target::from_index(1)]),
                 Event::at(Fraction::new(2, 4), Fraction::new(1, 4))
                     .with_note(0, 4)
-                    .with_targets(vec![Target::from_index(2), Target::from_index(3)]),
+                    .with_targets(vec![Target::from_index(2)]),
                 Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                     .with_note(2, 4)
                     .with_target(Target::from_index(3)),
@@ -2696,7 +2687,7 @@ mod test {
                             .with_target(Target::from_index(2)),
                         Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(8), Target::from_index(3)]),
+                            .with_targets(vec![Target::from_index(8)]),
                     ],
                     vec![
                         Event::at(Fraction::from(0), Fraction::new(1, 2))
@@ -2707,7 +2698,7 @@ mod test {
                             .with_target(Target::from_index(4)),
                         Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(8), Target::from_index(4)]),
+                            .with_targets(vec![Target::from_index(8)]),
                     ],
                 ],
                 vec![
@@ -2717,10 +2708,10 @@ mod test {
                             .with_target(Target::from_index(1)),
                         Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(7), Target::from_index(2)]),
+                            .with_targets(vec![Target::from_index(7)]),
                         Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(9), Target::from_index(3)]),
+                            .with_targets(vec![Target::from_index(9)]),
                     ],
                     vec![
                         Event::at(Fraction::from(0), Fraction::new(1, 2))
@@ -2728,10 +2719,10 @@ mod test {
                             .with_target(Target::from_index(4)),
                         Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(7), Target::from_index(4)]),
+                            .with_targets(vec![Target::from_index(7)]),
                         Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(9), Target::from_index(4)]),
+                            .with_targets(vec![Target::from_index(9)]),
                     ],
                 ],
             ],
@@ -2765,7 +2756,7 @@ mod test {
                 vec![vec![
                     Event::at(Fraction::from(0), Fraction::new(1, 2))
                         .with_note(9, 4)
-                        .with_targets(vec![Target::from_index(1), Target::from_index(3)]),
+                        .with_targets(vec![Target::from_index(1)]),
                     Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                         .with_note(11, 4)
                         .with_target(Target::from_index(3)),
@@ -2773,7 +2764,7 @@ mod test {
                 vec![vec![
                     Event::at(Fraction::from(0), Fraction::new(1, 2))
                         .with_note(9, 4)
-                        .with_targets(vec![Target::from_index(1), Target::from_index(4)]),
+                        .with_targets(vec![Target::from_index(1)]),
                     Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                         .with_note(11, 4)
                         .with_target(Target::from_index(4)),
@@ -2794,6 +2785,19 @@ mod test {
                         // second v should not be applied
                         Target::Named("p".into(), Some(1.0)),
                     ])
+            ]]
+        );
+
+        // outer instrument values shouldn't override inner ones
+        assert_eq!(
+            Cycle::from("[a:#2 b]:#3")?.generate()?,
+            [[
+                Event::at(Fraction::from(0), Fraction::new(1, 2))
+                    .with_note(9, 4)
+                    .with_target(Target::from_index(2)),
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                    .with_note(11, 4)
+                    .with_target(Target::from_index(3)),
             ]]
         );
 
