@@ -478,7 +478,7 @@ pub(crate) fn note_degree_from_value(arg: &LuaValue, arg_index: usize) -> LuaRes
             "v" => Ok(5),
             "vi" => Ok(6),
             "vii" => Ok(7),
-            _ => return degree_error(),
+            _ => degree_error(),
         }
     } else {
         degree_error()
