@@ -856,6 +856,14 @@ impl Events {
         })
     }
 
+    fn maybe_poly(poly: PolyEvents) -> Self {
+        if poly.channels.len() == 1 {
+            poly.channels.into_iter().next().expect("len is 1")
+        } else {
+            Self::Poly(poly)
+        }
+    }
+
     fn get_length(&self) -> Fraction {
         match self {
             Events::Single(s) => s.length,
@@ -1034,22 +1042,21 @@ impl Events {
     }
 
     /// Recursively collapses Multi and Poly Events into vectors of Single Events
-    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: usize) {
-        if channels.len() <= channel {
+    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
+        if channels.len() <= *channel {
             channels.push(vec![])
         }
         match self {
-            Events::Single(s) => channels[channel].push(s.clone()),
+            Events::Single(s) => channels[*channel].push(s.clone()),
             Events::Multi(m) => {
                 for e in &m.events {
                     e.flatten(channels, channel);
                 }
             }
             Events::Poly(p) => {
-                let mut c = channel;
                 for e in &p.channels {
-                    e.flatten(channels, c);
-                    c += 1
+                    e.flatten(channels, channel);
+                    *channel += 1
                 }
             }
         }
@@ -1106,13 +1113,15 @@ impl Events {
         }
     }
 
-    fn export(&mut self) -> Vec<Vec<Event>> {
+    fn export(&self) -> Vec<Vec<Event>> {
         let mut channels = vec![];
-        self.flatten(&mut channels, 0);
+        self.flatten(&mut channels, &mut 0);
         Self::merge(&mut channels);
+        channels.retain(|c| !c.is_empty());
 
         #[cfg(test)]
         {
+            self.print(0);
             println!("\nOUTPUT");
             let channel_count = channels.len();
             for (ci, channel) in channels.iter().enumerate() {
@@ -1128,22 +1137,27 @@ impl Events {
         channels
     }
 
-    // TODO remove this once the "step * step" is done
     #[cfg(test)]
-    #[allow(dead_code)]
-    fn print(&self) {
+    fn print(&self, depth: usize) {
+        let indent = " ".repeat(depth * 2);
         match self {
-            Events::Single(s) => println!("[{}] {}", s.length, s),
+            Events::Single(s) => println!("{}'{}' {}", indent, s.string, s),
             Events::Multi(m) => {
-                println!("multi {} -> {} [{}]", m.span.start, m.span.end, m.length);
+                println!(
+                    "{}multi {} -> {} [{}]",
+                    indent, m.span.start, m.span.end, m.length
+                );
                 for e in &m.events {
-                    e.print()
+                    e.print(depth + 1)
                 }
             }
             Events::Poly(p) => {
-                println!("multi {} -> {} [{}]", p.span.start, p.span.end, p.length);
+                println!(
+                    "{}poly {} -> {} [{}]",
+                    indent, p.span.start, p.span.end, p.length
+                );
                 for e in &p.channels {
-                    e.print()
+                    e.print(depth + 1)
                 }
             }
         }
@@ -1771,8 +1785,8 @@ impl Cycle {
     ) -> Result<(Vec<Vec<Event>>, Span), String> {
         let mut events = Self::output(step, state, cycle, limit, true)?;
         events.transform_spans(&events.get_span());
-        let mut channels: Vec<Vec<Event>> = vec![];
-        events.flatten(&mut channels, 0);
+        let mut channels = vec![];
+        events.flatten(&mut channels, &mut 0);
         Events::merge(&mut channels);
         Ok((channels, events.get_span()))
     }
@@ -1821,9 +1835,8 @@ impl Cycle {
                         }));
                     }
                 }
-
                 // put all the resulting events back together
-                Ok(Events::Poly(PolyEvents {
+                Ok(Events::maybe_poly(PolyEvents {
                     length: left_span.length(),
                     span: left_span,
                     channels: channel_events,
@@ -1858,9 +1871,7 @@ impl Cycle {
             _ => {
                 // generate and flatten the events for the right side of the expression
                 let events = Self::output(right, state, cycle, limit, overlap)?;
-                let mut channels: Vec<Vec<Event>> = vec![];
-                events.flatten(&mut channels, 0);
-                Events::merge(&mut channels);
+                let channels = events.export();
 
                 // extract a float to use as mult from each event and output the step with it
                 let mut channel_events: Vec<Events> = Vec::with_capacity(channels.len());
@@ -1884,7 +1895,7 @@ impl Cycle {
                 }
 
                 // put all the resulting events back together
-                Ok(Events::Poly(PolyEvents {
+                Ok(Events::maybe_poly(PolyEvents {
                     length: events.get_length(),
                     span: events.get_span(),
                     channels: channel_events,
@@ -1965,7 +1976,7 @@ impl Cycle {
                     for s in &st.stack {
                         channels.push(Self::output(s, state, cycle, limit, overlap)?)
                     }
-                    Events::Poly(PolyEvents {
+                    Events::maybe_poly(PolyEvents {
                         span: Span::default(),
                         length: Fraction::ONE,
                         channels,
@@ -2213,9 +2224,10 @@ mod test {
             ]]
         );
 
-        assert_eq!(Cycle::from("a*[]")?.generate()?, [[]]);
-        assert_eq!(Cycle::from("[c d]/0")?.generate()?, [[]]);
-        assert_eq!(Cycle::from("[c d]*0")?.generate()?, [[]]);
+        let empty_events: Vec<Vec<Event>> = vec![];
+        assert_eq!(Cycle::from("a*[]")?.generate()?, empty_events);
+        assert_eq!(Cycle::from("[c d]/0")?.generate()?, empty_events);
+        assert_eq!(Cycle::from("[c d]*0")?.generate()?, empty_events);
 
         assert!(Cycle::from("[c d]/1000000000000").is_err()); // too large for fraction
         assert_eq!(
@@ -2978,6 +2990,22 @@ mod test {
             .with_event_limit(0x10000)
             .generate()
             .is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn stacks() -> Result<(), String> {
+        assert_eq!(
+            Cycle::from("bd [bd, cp], ~ hh")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("bd"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("bd")
+                ],
+                vec![Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("cp")],
+                vec![Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("hh")]
+            ]
+        );
         Ok(())
     }
 
