@@ -2708,7 +2708,7 @@ mod test {
                             .with_target(Target::from_index(1)),
                         Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
                             .with_note(11, 4)
-                            .with_targets(vec![Target::from_index(7)]),
+                            .with_target(Target::from_index(7)),
                         Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                             .with_note(11, 4)
                             .with_target(Target::from_index(9)),
