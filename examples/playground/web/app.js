@@ -22,10 +22,10 @@ const defaultScriptContent = `--
 
 -- the note patterns that we're emitting
 local note_patterns = {
-  { "c5", "d#5", "c6", "g5", "c5", "g#4" },
-  { "c4", "d#4", "f4", "c5", "d#5", "f5" },
-  { "d#5", "g5", "d#5", "c6", "g#4", "c5" },
-  { "d#4", "c4", "f4", "c5", "f4", "d#5"  },
+  { "c#4", "f4", "c5", "f5", "g#4", "f4" },
+  { "a#4", "g#4", "f4", "a#3", "g#3", "f3" },
+  { "f4", "c#4", "f5", "g#4", "c5", "g#4" },
+  { "g#4", "a#3", "f4", "a#3", "f3", "g#3" },
 }
 
 -- get arp direction step sign from the given direction parameter mode string
@@ -73,58 +73,23 @@ return pattern {
 // -------------------------------------------------------------------------------------------------
 
 const backend = {
-    _playground: undefined,
+    _backend: undefined,
     _isPlaying: false,
+    _currentInstrument: null,
 
-    initialize: function (playground) {
-        this._playground = playground;
+    initialize: function (backend) {
+        this._backend = backend;
 
-        const err = this._playground.ccall('initialize_playground', 'string', [])
+        const err = this._backend.ccall('initialize_app', 'string', [])
         if (err) {
             return err
         }
 
-        this.updateBpm(defaultBpm);
-        this.updateInstrument(defaultInstrument);
-        this.updateScriptContent(defaultScriptContent);
+        this.setBpm(defaultBpm);
+        this.setInstrument(defaultInstrument);
+        this.updateScript(defaultScriptContent);
 
         return undefined;
-    },
-
-    getSamples: function () {
-        const stringPtr = this._playground.ccall('get_samples', 'number', [])
-        const samplesJson = this._playground.UTF8ToString(stringPtr);
-        this._freeCString(stringPtr)
-        return JSON.parse(samplesJson);
-    },
-
-    getQuickstartScripts: function () {
-        const stringPtr = this._playground.ccall('get_quickstart_scripts', 'number', [])
-        const examplesJson = this._playground.UTF8ToString(stringPtr);
-        this._freeCString(stringPtr)
-        return JSON.parse(examplesJson);
-    },
-
-    getExampleScripts: function () {
-        const stringPtr = this._playground.ccall('get_example_scripts', 'number', [])
-        const examplesJson = this._playground.UTF8ToString(stringPtr);
-        this._freeCString(stringPtr)
-        return JSON.parse(examplesJson);
-    },
-
-    getScriptError: function () {
-        let stringPtr = this._playground.ccall('get_script_error', 'number', [])
-        const error = this._playground.UTF8ToString(stringPtr);
-        this._freeCString(stringPtr)
-        return error;
-    },
-
-    getScriptParameters: function () {
-        let stringPtr = this._playground.ccall('get_script_parameters', 'number', [])
-        const json = this._playground.UTF8ToString(stringPtr);
-        const parameters = JSON.parse(json);
-        this._freeCString(stringPtr)
-        return parameters;
     },
 
     isPlaying: function () {
@@ -132,50 +97,92 @@ const backend = {
     },
 
     startPlaying: function () {
-        this._playground.ccall("start_playing");
+        this._backend.ccall("start_playing");
         this._isPlaying = true;
     },
 
     stopPlaying: function () {
-        this._playground.ccall("stop_playing");
+        this._backend.ccall("stop_playing");
         this._isPlaying = false;
     },
 
-    setVolume: function (volume) {
-        this._playground.ccall("set_volume", "undefined", ["number"], [volume]);
-    },
-
     stopPlayingNotes: function () {
-        this._playground.ccall("stop_playing_notes");
+        this._backend.ccall("stop_playing_notes");
     },
 
     sendMidiNoteOn: function (note, velocity) {
-        this._playground.ccall("midi_note_on", 'undefined', ['number', 'number'], [note, velocity]);
+        this._backend.ccall("midi_note_on", 'undefined', ['number', 'number'], [note, velocity]);
     },
 
     sendMidiNoteOff: function (note) {
-        this._playground.ccall("midi_note_off", 'undefined', ['number'], [note]);
+        this._backend.ccall("midi_note_off", 'undefined', ['number'], [note]);
     },
 
-    updateInstrument: function (instrument) {
-        this._playground.ccall("set_instrument", 'undefined', ['number'], [instrument]);
+    setVolume: function (volume) {
+        this._backend.ccall("set_volume", "undefined", ["number"], [volume]);
     },
 
-    updateBpm: function (bpm) {
-        this._playground.ccall("set_bpm", 'undefined', ['number'], [bpm]);
+    setBpm: function (bpm) {
+        this._backend.ccall("set_bpm", 'undefined', ['number'], [bpm]);
     },
 
-    updateParameterValue: function (id, value) {
-        this._playground.ccall("set_parameter_value", "undefined", ["string", "number"], [id, value]);
+    getInstrument: function () {
+        return this._currentInstrument;
     },
 
-    updateScriptContent: function (content) {
-        this._playground.ccall("update_script", 'undefined', ['string'], [content]);
+    setInstrument: function (instrument) {
+        this._currentInstrument = instrument;
+        this._backend.ccall("set_instrument", 'undefined', ['number'], [instrument]);
+    },
+
+    getQuickstartScripts: function () {
+        const stringPtr = this._backend.ccall('quickstart_scripts', 'number', [])
+        const examplesJson = this._backend.UTF8ToString(stringPtr);
+        this._freeCString(stringPtr)
+        return JSON.parse(examplesJson);
+    },
+
+    getExampleScripts: function () {
+        const stringPtr = this._backend.ccall('example_scripts', 'number', [])
+        const examplesJson = this._backend.UTF8ToString(stringPtr);
+        this._freeCString(stringPtr)
+        return JSON.parse(examplesJson);
+    },
+
+    updateScript: function (content) {
+        this._backend.ccall("update_script", 'undefined', ['string'], [content]);
+    },
+
+    getScriptError: function () {
+        let stringPtr = this._backend.ccall('script_error', 'number', [])
+        const error = this._backend.UTF8ToString(stringPtr);
+        this._freeCString(stringPtr)
+        return error;
+    },
+
+    getScriptParameters: function () {
+        let stringPtr = this._backend.ccall('script_parameters', 'number', [])
+        const json = this._backend.UTF8ToString(stringPtr);
+        const parameters = JSON.parse(json);
+        this._freeCString(stringPtr)
+        return parameters;
+    },
+
+    setScriptParameterValue: function (id, value) {
+        this._backend.ccall("set_script_parameter_value", "undefined", ["string", "number"], [id, value]);
+    },
+
+
+    getSamples: function () {
+        const stringPtr = this._backend.ccall('samples', 'number', [])
+        const samplesJson = this._backend.UTF8ToString(stringPtr);
+        this._freeCString(stringPtr)
+        return JSON.parse(samplesJson);
     },
 
     loadSample: function (filename, buffer) {
         const data = new Uint8Array(buffer);
-        const newSampleId = this._playground.ccall(
+        const newSampleId = this._backend.ccall(
             'load_sample',
             'number',
             ['string', 'array', 'number'],
@@ -185,11 +192,65 @@ const backend = {
     },
 
     clearSamples: function () {
-        this._playground.ccall('clear_samples', 'undefined', []);
+        this._backend.ccall('clear_samples', 'undefined', []);
+    },
+
+    getMixers: function () {
+        const stringPtr = this._backend.ccall('mixers', 'number', []);
+        const json = this._backend.UTF8ToString(stringPtr);
+        this._freeCString(stringPtr);
+        return JSON.parse(json);
+    },
+
+    removeMixer: function (mixerId) {
+        return this._backend.ccall('remove_mixer', 'number', ['number'], [mixerId]);
+    },
+
+    getAvailableEffects: function () {
+        const stringPtr = this._backend.ccall('available_effects', 'number', []);
+        const json = this._backend.UTF8ToString(stringPtr);
+        this._freeCString(stringPtr);
+        return JSON.parse(json);
+    },
+
+    addEffectToMixer: function (mixerId, effectName) {
+        const stringPtr = this._backend.ccall('add_effect_to_mixer', 'number', ['number', 'string'], [mixerId, effectName]);
+        if (stringPtr !== 0) {
+            const json = this._backend.UTF8ToString(stringPtr);
+            const result = JSON.parse(json);
+            this._freeCString(stringPtr);
+            return result;
+        }
+        return null;
+    },
+
+    removeEffectFromMixer: function (effectId) {
+        return this._backend.ccall('remove_effect_from_mixer', 'number', ['number'], [effectId]);
+    },
+
+    moveEffectInMixer: function (effectId, mixerId, direction) {
+        return this._backend.ccall('move_effect_in_mixer', 'number', ['number', 'number', 'number'],
+            [effectId, mixerId, direction]);
+    },
+
+    getEffectParameterString: function (effectId, paramId, normalizedValue) {
+        const stringPtr = this._backend.ccall('effect_parameter_string', 'number', ['number', 'number', 'number'],
+            [effectId, paramId, normalizedValue]);
+        if (stringPtr !== 0) {
+            const valueStr = this._backend.UTF8ToString(stringPtr);
+            this._freeCString(stringPtr);
+            return valueStr;
+        }
+        return null;
+    },
+
+    setEffectParameterValue: function (effectId, paramId, normalizedValue) {
+        this._backend.ccall('set_effect_parameter_value', 'number', ['number', 'number', 'number'],
+            [effectId, paramId, normalizedValue]);
     },
 
     _freeCString: function (stringPtr) {
-        this._playground.ccall('free_cstring', 'undefined', ['number'], [stringPtr])
+        this._backend.ccall('free_cstring', 'undefined', ['number'], [stringPtr])
     },
 };
 
@@ -202,6 +263,7 @@ const app = {
     _changedHashFromUserEdit: false,
     _changedScriptFromHash: false,
     _midiEnabled: false,
+    _fxManager: undefined,
 
     initialize: function () {
         // hide spinner, show content
@@ -218,6 +280,7 @@ const app = {
         this._initScriptErrorHandler();
         this._initScriptParameterHandler();
         this._initEditor();
+        this._fxManager = new FxManager();
     },
 
     // Show status message in loading screen or status bar
@@ -256,7 +319,7 @@ const app = {
         }
     },
 
-    _togglePlayback: function () {  
+    _togglePlayback: function () {
         const playButton = document.getElementById('playButton');
         if (!playButton.disabled) {
             if (backend.isPlaying()) {
@@ -276,7 +339,7 @@ const app = {
         const playButton = document.getElementById('playButton');
         const midiButton = document.getElementById('midiButton');
         console.assert(playButton && midiButton);
-        
+
         playButton.addEventListener('click', () => this._togglePlayback());
         playButton.title = "Toggle Playback (Ctrl+Shift+Space)";
 
@@ -292,7 +355,7 @@ const app = {
                 if (bpm !== clampedBpm) {
                     e.target.value = clampedBpm;
                 }
-                backend.updateBpm(clampedBpm);
+                backend.setBpm(clampedBpm);
                 this.setStatus(`Set new BPM: '${clampedBpm}'`);
             }
         });
@@ -373,7 +436,7 @@ const app = {
                 }
             }
         }
-        
+
         const enableMidi = () => {
             if (!navigator.requestMIDIAccess) {
                 return Promise.reject(new Error("Web MIDI API not supported"));
@@ -488,12 +551,12 @@ const app = {
     _selectInstrument: function (id) {
         if (id === null || id === undefined) return;
         const select = document.getElementById('sampleSelect');
-        const value = Math.max(0, Math.min(Number(id), select.options.length - 1));
-        
-        select.value = value;
-        backend.updateInstrument(value);
+        const numericId = Number(id);
+        const value = Math.max(0, Math.min(numericId, select.options.length - 1));
+        select.value = numericId;
 
-        this.setStatus(`Set new default instrument: '${select.options[value].innerHTML}'`);
+        backend.setInstrument(numericId);
+        this.setStatus(`Set default instrument: '${select.options[value].innerHTML}'`);
     },
 
     // Populate sample dropdown
@@ -524,23 +587,23 @@ const app = {
             option.textContent = 'No samples loaded';
             select.appendChild(option);
             select.onchange = null;
-            backend.updateInstrument(-1);
+            backend.setInstrument(-1);
         }
     },
 
-    _updateScript: function({script, name, instrument}) {
+    _updateScript: function ({ script, name, instrument }) {
         this._selectInstrument(instrument);
-        
+
         if (backend.isPlaying()) {
             backend.stopPlaying();
-            backend.updateScriptContent(script);
+            backend.updateScript(script);
             backend.startPlaying();
         } else {
-            backend.updateScriptContent(script);
+            backend.updateScript(script);
         }
         this._editor.setScrollPosition({ scrollTop: 0 });
         this._updateEditCount(0);
-                
+
         this.setStatus(`Loaded script: '${name}'.`);
     },
 
@@ -593,11 +656,11 @@ const app = {
         examples.forEach(appendExampleLink);
     },
 
-    _encodeScript: function ({script, name, instrument}) {
+    _encodeScript: function ({ script, name, instrument }) {
         return btoa(JSON.stringify({ script, name, instrument }));
     },
-    
-    _decodeScriptFromHash: function (defaultScriptData = {script: "", name: "untitled", instrument: null}) {
+
+    _decodeScriptFromHash: function (defaultScriptData = { script: "", name: "untitled", instrument: null }) {
         const hash = window.location.hash;
         if (hash.length < 2) {
             return defaultScriptData;
@@ -616,7 +679,7 @@ const app = {
         window.location.hash = this._encodeScript({
             script: this._editor.getValue(),
             name: "custom",
-            instrument: document.getElementById("sampleSelect").value
+            instrument: document.getElementById('sampleSelect').value
         });
     },
 
@@ -634,7 +697,7 @@ const app = {
                 script: defaultScriptContent,
                 name: "Default Script",
             });
-            
+
             // Create editor
             this._editor = monaco.editor.create(editorElement, {
                 value: scriptData.script,
@@ -658,7 +721,7 @@ const app = {
                 this._updateHash();
                 this._updateEditCount(this._editCount + 1);
             });
-            
+
             // Handle Ctrl+Enter
             const commitAction = {
                 id: "Apply Script Changes",
@@ -667,10 +730,10 @@ const app = {
                 contextMenuGroupId: "script",
                 keybindings: [
                     monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.Key_S,
+                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
                 ],
                 run: () => {
-                    backend.updateScriptContent(this._editor.getValue());
+                    backend.updateScript(this._editor.getValue());
                     this._updateEditCount(0);
                     this.setStatus("Applied script changes.");
                 },
@@ -720,7 +783,7 @@ const app = {
                 this._editor.setValue(scriptData.script);
                 this._updateScript(scriptData);
             });
-            
+
             /*
             // TODO: Register a simple autocomplete provider for Lua for `pattern`
             monaco.languages.registerCompletionItemProvider('lua', {
@@ -920,7 +983,7 @@ const app = {
                     control.type = 'checkbox';
                     control.checked = param.value;
                     control.addEventListener('change', (e) => {
-                        backend.updateParameterValue(param.id, e.target.checked ? 1 : 0);
+                        backend.setScriptParameterValue(param.id, e.target.checked ? 1 : 0);
                     });
                     break;
 
@@ -957,7 +1020,7 @@ const app = {
                             e.target.value = clampedValue;
                         }
                         // Send the valid, clamped value to the backend
-                        backend.updateParameterValue(param.id, clampedValue);
+                        backend.setScriptParameterValue(param.id, clampedValue);
                     });
                     break;
 
@@ -971,7 +1034,7 @@ const app = {
                     });
                     control.value = param.value;
                     control.addEventListener('change', (e) => {
-                        backend.updateParameterValue(param.id, parseInt(e.target.value, 10));
+                        backend.setScriptParameterValue(param.id, parseInt(e.target.value, 10));
                     });
                     break;
             }
@@ -982,6 +1045,429 @@ const app = {
             container.appendChild(controlWrapper);
         });
     },
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+// FX Manager Class
+class FxManager {
+    constructor() {
+        this.mixers = new Map();
+        this.availableEffects = [];
+        this.initUI();
+    }
+
+    getMixerIdForInstrument(instrumentId) {
+        for (const [mixerId, mixer] of this.mixers.entries()) {
+            if (mixer.instrument_id === instrumentId) {
+                return mixerId;
+            }
+        }
+        return null;
+    }
+
+    initUI() {
+        this.availableEffects = backend.getAvailableEffects();
+
+        const fxEditorButton = document.getElementById('fxEditorButton');
+        const fxChainContainer = document.getElementById('fxChainContainer');
+        const sampleSelect = document.getElementById('sampleSelect');
+
+        fxEditorButton.addEventListener('click', () => {
+            const isVisible = fxChainContainer.classList.contains('visible');
+            if (isVisible) {
+                fxChainContainer.classList.remove('visible');
+                fxEditorButton.classList.remove('enabled');
+            } else {
+                this.refreshMixers();
+                fxChainContainer.classList.add('visible');
+                fxEditorButton.classList.add('enabled');
+
+                const currentInstrumentId = backend.getInstrument();
+                if (currentInstrumentId !== null && currentInstrumentId >= 0) {
+                    this.onInstrumentChanged(currentInstrumentId);
+                }
+            }
+        });
+
+        // Listen to main sample selector changes
+        sampleSelect.addEventListener('change', (e) => {
+            const instrumentId = parseInt(e.target.value);
+            if (!isNaN(instrumentId) && fxChainContainer.classList.contains('visible')) {
+                this.refreshMixers();
+                this.onInstrumentChanged(instrumentId);
+            }
+        });
+    }
+
+    refreshMixers() {
+        const mixers = backend.getMixers();
+        this.mixers.clear();
+        mixers.forEach(mixer => {
+            this.mixers.set(mixer.id, mixer);
+        });
+        this.updateAddEffectButtons();
+    }
+
+    onInstrumentChanged(instrumentId) {
+        const fxChainContainer = document.getElementById('fxChainContainer');
+        if (!fxChainContainer.classList.contains('visible')) {
+            return;
+        }
+        const mixerId = this.getMixerIdForInstrument(instrumentId);
+        this.updateChainUI(mixerId);
+        this.updateAddEffectButtons();
+    }
+
+    updateAddEffectButtons() {
+        const addEffectMenu = document.getElementById('fxAddEffectMenu');
+        addEffectMenu.innerHTML = '';
+
+        this.availableEffects.forEach(effectName => {
+            const button = document.createElement('button');
+            button.textContent = `+ ${effectName}`;
+            button.addEventListener('click', () => this.addEffect(effectName));
+            addEffectMenu.appendChild(button);
+        });
+    }
+
+    updateChainUI(mixerId) {
+        const devicesContainer = document.getElementById('fxChainDevices');
+        devicesContainer.innerHTML = '';
+
+        if (mixerId === null || isNaN(mixerId) || mixerId < 0) {
+            const empty = document.createElement('div');
+            empty.className = 'fx-chain-empty';
+            empty.textContent = 'No sample selected.';
+            devicesContainer.appendChild(empty);
+            return;
+        }
+
+        const mixer = this.mixers.get(mixerId);
+        if (!mixer || mixer.effects.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'fx-chain-empty';
+            empty.textContent = 'No effects. Add an effect using the buttons above.';
+            devicesContainer.appendChild(empty);
+            return;
+        }
+
+        mixer.effects.forEach(effect => {
+            const card = this.createDeviceCard(effect, mixerId);
+            devicesContainer.appendChild(card);
+        });
+
+        // Handle device drops
+        devicesContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+
+            const draggingCard = document.querySelector('.dragging');
+            if (!draggingCard) return;
+
+            // Remove existing markers
+            document.querySelectorAll('.fx-drop-marker').forEach(m => m.remove());
+
+            // Find the best position to insert the marker
+            const cards = Array.from(devicesContainer.querySelectorAll('.fx-device-card:not(.dragging)'));
+
+            if (cards.length === 0) {
+                // No other cards, just add marker at the end
+                const marker = document.createElement('div');
+                marker.className = 'fx-drop-marker';
+                marker.dataset.dropPosition = 'end';
+                devicesContainer.appendChild(marker);
+            } else {
+                // Find which card we're closest to
+                let closestCard = null;
+                let closestDistance = Infinity;
+                let insertBefore = true;
+
+                cards.forEach(card => {
+                    const rect = card.getBoundingClientRect();
+                    const cardCenter = rect.left + rect.width / 2;
+                    const distance = Math.abs(e.clientX - cardCenter);
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestCard = card;
+                        insertBefore = e.clientX < cardCenter;
+                    }
+                });
+
+                if (closestCard) {
+                    const marker = document.createElement('div');
+                    marker.className = 'fx-drop-marker';
+                    if (insertBefore) {
+                        closestCard.parentNode.insertBefore(marker, closestCard);
+                        marker.dataset.dropPosition = 'before';
+                        marker.dataset.targetEffectId = closestCard.dataset.effectId;
+                    } else {
+                        closestCard.parentNode.insertBefore(marker, closestCard.nextSibling);
+                        marker.dataset.dropPosition = 'after';
+                        marker.dataset.targetEffectId = closestCard.dataset.effectId;
+                    }
+                }
+            }
+        });
+
+        devicesContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+
+            const marker = devicesContainer.querySelector('.fx-drop-marker');
+            if (!marker) return;
+
+            const draggedEffectId = parseInt(e.dataTransfer.getData('text/plain'));
+            const dropPosition = marker.dataset.dropPosition;
+            const targetEffectId = marker.dataset.targetEffectId;
+
+            // Clean up
+            document.querySelectorAll('.fx-drop-marker').forEach(m => m.remove());
+
+            if (dropPosition === 'end') {
+                // Drop at the end - move to last position
+                const mixer = this.mixers.get(mixerId);
+                if (!mixer) return;
+
+                const draggedIndex = mixer.effects.findIndex(e => e.id === draggedEffectId);
+                if (draggedIndex === -1) return;
+
+                const lastIndex = mixer.effects.length - 1;
+                if (draggedIndex === lastIndex) return; // Already at the end
+
+                const direction = lastIndex - draggedIndex;
+                const result = backend.moveEffectInMixer(draggedEffectId, mixerId, direction);
+                if (result === 0) {
+                    app.setStatus(`Moved effect to end`);
+                    this.refreshMixers();
+                    this.onInstrumentChanged(backend.getInstrument());
+                }
+            } else if (targetEffectId) {
+                // Drop relative to another card
+                this.reorderEffect(draggedEffectId, parseInt(targetEffectId), dropPosition, mixerId);
+            }
+        });
+
+        devicesContainer.addEventListener('dragleave', (e) => {
+            // Only remove markers if we're leaving the container entirely
+            const rect = devicesContainer.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX > rect.right ||
+                e.clientY < rect.top || e.clientY > rect.bottom) {
+                document.querySelectorAll('.fx-drop-marker').forEach(m => m.remove());
+            }
+        });
+    }
+
+    createDeviceCard(effect, mixerId) {
+        const card = document.createElement('div');
+        card.className = 'fx-device-card';
+        card.dataset.effectId = effect.id;
+        card.dataset.mixerId = mixerId;
+
+        const header = document.createElement('div');
+        header.className = 'fx-device-header';
+        header.draggable = true;
+
+        // Drag start - attach to header
+        header.addEventListener('dragstart', (e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', effect.id);
+            card.classList.add('dragging');
+        });
+
+        // Drag end - attach to header
+        header.addEventListener('dragend', (e) => {
+            card.classList.remove('dragging');
+            document.querySelectorAll('.fx-drop-marker').forEach(m => m.remove());
+            document.querySelectorAll('.fx-device-card').forEach(c => {
+                delete c.dataset.dropPosition;
+            });
+        });
+
+        const name = document.createElement('div');
+        name.className = 'fx-device-name';
+        name.textContent = effect.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'fx-device-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove Effect';
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.removeEffect(effect.id);
+        });
+
+        header.appendChild(name);
+        header.appendChild(removeBtn);
+        card.appendChild(header);
+
+        // Add parameters inline
+        if (effect.parameters.length > 0) {
+            const paramsContainer = document.createElement('div');
+            paramsContainer.className = 'fx-device-params';
+
+            effect.parameters.forEach(param => {
+                const paramControl = this.createInlineParameterControl(effect.id, param);
+                paramsContainer.appendChild(paramControl);
+            });
+
+            card.appendChild(paramsContainer);
+        }
+
+        return card;
+    }
+
+    reorderEffect(draggedEffectId, targetEffectId, dropPosition, mixerId) {
+        const mixer = this.mixers.get(mixerId);
+        if (!mixer) return;
+
+        // Find positions
+        const draggedIndex = mixer.effects.findIndex(e => e.id === draggedEffectId);
+        const targetIndex = mixer.effects.findIndex(e => e.id === targetEffectId);
+
+        // something to drag?
+        if (draggedIndex === -1 || targetIndex === -1) return;
+        // dragging onto the right side of the device left to us 
+        if (dropPosition === 'after' && targetIndex === draggedIndex - 1) return;
+        // dragging onto the left side of the device right to us 
+        if (dropPosition === 'before' && targetIndex === draggedIndex + 1) return;
+
+        // Calculate direction to move
+        const direction = targetIndex - draggedIndex;
+
+        const result = backend.moveEffectInMixer(draggedEffectId, mixerId, direction);
+        if (result === 0) {
+            app.setStatus(`Reordered effect`);
+            this.refreshMixers();
+            const selectedInstrumentId = backend.getInstrument();
+            if (selectedInstrumentId !== null && selectedInstrumentId >= 0) {
+                this.onInstrumentChanged(selectedInstrumentId);
+            }
+        } else {
+            const isError = true;
+            app.setStatus(`Failed to reorder effect`, isError);
+        }
+    }
+
+    createInlineParameterControl(effectId, param) {
+        const container = document.createElement('div');
+        container.className = 'fx-device-param';
+
+        const label = document.createElement('label');
+        label.className = 'fx-device-param-label';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = param.name;
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'fx-device-param-value';
+
+        label.appendChild(nameSpan);
+        label.appendChild(valueSpan);
+
+        const updateValueDisplay = (normalizedValue) => {
+            const valueStr = backend.getEffectParameterString(effectId, param.id, normalizedValue);
+            if (valueStr) {
+                valueSpan.textContent = valueStr;
+            }
+        };
+
+        let input;
+        if (param.type === 'Float' || param.type === 'Integer') {
+            input = document.createElement('input');
+            input.type = 'range';
+            input.min = '0';
+            input.max = '1';
+            input.step = '0.01';
+            input.value = param.default;
+            updateValueDisplay(param.default);
+
+            input.addEventListener('input', (e) => {
+                const normalized = parseFloat(e.target.value);
+                backend.setEffectParameterValue(effectId, param.id, normalized);
+                updateValueDisplay(normalized);
+            });
+        } else if (param.type === 'Boolean') {
+            input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = param.default > 0.5;
+            updateValueDisplay(param.default);
+
+            input.addEventListener('change', (e) => {
+                const normalized = e.target.checked ? 1.0 : 0.0;
+                backend.setEffectParameterValue(effectId, param.id, normalized);
+                updateValueDisplay(normalized);
+            });
+        } else if (param.type === 'Enum') {
+            input = document.createElement('select');
+            const defaultIndex = Math.floor(param.default * (param.values.length - 1));
+            updateValueDisplay(param.default);
+            param.values.forEach((val, idx) => {
+                const option = document.createElement('option');
+                option.value = idx;
+                option.textContent = val;
+                if (idx === defaultIndex) {
+                    option.selected = true;
+                }
+                input.appendChild(option);
+            });
+
+            input.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.value);
+                const normalized = idx / (param.values.length - 1);
+                backend.setEffectParameterValue(effectId, param.id, normalized);
+                updateValueDisplay(normalized);
+            });
+        }
+
+        container.appendChild(label);
+        if (input) {
+            container.appendChild(input);
+        }
+
+        return container;
+    }
+
+    addEffect(effectName) {
+        const selectedInstrumentId = backend.getInstrument();
+
+        if (selectedInstrumentId === null || selectedInstrumentId < 0) {
+            const isError = true;
+            app.setStatus('No sample selected', isError);
+            return;
+        }
+
+        const mixerId = this.getMixerIdForInstrument(selectedInstrumentId);
+        if (mixerId === null) {
+            const isError = true;
+            app.setStatus('No mixer found for selected sample', isError);
+            return;
+        }
+
+        const result = backend.addEffectToMixer(mixerId, effectName);
+        if (result) {
+            app.setStatus(`Added ${effectName} effect`);
+            this.refreshMixers();
+            this.onInstrumentChanged(selectedInstrumentId);
+        } else {
+            const isError = true;
+            app.setStatus(`Failed to add ${effectName} effect`, isError);
+        }
+    }
+
+    removeEffect(effectId) {
+        const result = backend.removeEffectFromMixer(effectId);
+        if (result === 0) {
+            app.setStatus(`Removed effect`);
+            const selectedInstrumentId = backend.getInstrument();
+            this.refreshMixers();
+            if (selectedInstrumentId !== null && selectedInstrumentId >= 0) {
+                this.onInstrumentChanged(selectedInstrumentId);
+            }
+        } else {
+            const isError = true;
+            app.setStatus(`Failed to remove effect`, isError);
+        }
+    }
 }
 
 // -------------------------------------------------------------------------------------------------

@@ -7,15 +7,17 @@ description = "pattrns playground for the web"
 # see build.rs and build.sh for the emscripten config
 
 [dependencies]
+anyhow = { version = "^1.0" }
+four-cc = { version = "^0.4" }
+serde = { version = "^1.0", features = ["derive"] }
+serde_json = { version = "^1.0" }
+emscripten_rs_sys = { version = "^0.1" }
 pattrns = { path = "../..", default-features = false, features = [
     "scripting",
     "lua",
     "player",
     "web-output",
 ] }
-emscripten_rs_sys = { version = "^0.1" }
-serde = { version = "^1.0", features = ["derive"] }
-serde_json = { version = "^1.0" }
 
 [patch.crates-io]
 # custom patched version with pthread support

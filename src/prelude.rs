@@ -64,4 +64,7 @@ pub use super::{
 
 #[cfg(feature = "player")]
 // all public player types
-pub use super::player::{NewNoteAction, SamplePlaybackContext, SamplePlayer, SamplePool};
+pub use super::player::{
+    effects, Effect, EffectId, EffectMovement, EffectParameter, EffectParameterType, MixerId,
+    NewNoteAction, SamplePlaybackContext, SamplePlayer, SamplePool,
+};

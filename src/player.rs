@@ -30,7 +30,8 @@ use crate::{
 
 /// [`phonic`](https://crates.io/crates/phonic) effects.
 pub use phonic::{
-    effects, Effect, EffectId, EffectMessage, EffectMessagePayload, EffectTime, MixerId,
+    effects, Effect, EffectId, EffectMessage, EffectMessagePayload, EffectMovement, EffectTime,
+    MixerId, Parameter as EffectParameter, ParameterType as EffectParameterType,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -736,6 +737,7 @@ impl SamplePlayer {
             NewNoteAction::Continue | NewNoteAction::Stop => Some(Duration::from_millis(100)),
             NewNoteAction::Off(duration) => duration,
         };
+        playback_options.target_mixer = self.sample_pool.target_mixer(instrument);
 
         let playback_sample_rate = self.inner.output_sample_rate();
         if let Ok(sample) =

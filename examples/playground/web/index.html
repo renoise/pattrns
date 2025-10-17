@@ -58,7 +58,8 @@
                     <path
                         d="M10 0h8v20h-8zm9 0h8v20h-8zm9 0h8v20h-8zm9 0h8v20h-8zm9 0h8v20h-8zm9 0h8v20h-8zm9 0h8v20h-8z"
                         id="whiteKeys" fill="currentColor" stroke="black" stroke-width="0.5" />
-                    <path id="blackKeys" d="M15 0h6v12h-6zm9 0h6v12h-6zm18 0h6v12h-6zm9 0h6v12h-6zm9 0h6v12h-6z" fill="black" />
+                    <path id="blackKeys" d="M15 0h6v12h-6zm9 0h6v12h-6zm18 0h6v12h-6zm9 0h6v12h-6zm9 0h6v12h-6z"
+                        fill="black" />
                 </svg>
             </button>
 
@@ -78,11 +79,31 @@
                 <select id="sampleSelect">
                     <option value="none">Loading Samples...</option>
                 </select>
-                <button id="loadSampleButton" class="text-button" title="Load a local audio file (.wav, .flac, .mp3)"><i
-                        class="fas fa-upload"></i></button>
-                <button id="clearSamplesButton" class="text-button" title="Remove all loaded samples"><i
-                        class="fas fa-trash"></i></button>
+                <button id="loadSampleButton" class="text-button" title="Load a local audio file (.wav, .flac, .mp3)">
+                    <i class="fas fa-upload"></i>
+                </button>
+                <button id="clearSamplesButton" class="text-button" title="Remove all loaded samples">
+                    <i class="fas fa-trash"></i>
+                </button>
                 <input type="file" id="sampleFileInput" style="display: none;" accept=".wav,.flac,.mp3">
+            </div>
+            <div class="fx-control">
+                <span>FX:</span>
+                <button id="fxEditorButton" class="toggleButton" title="Edit Sample FX Chains">
+                    <i class="fas fa-sliders-h"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="fxChainContainer" class="fx-chain-container">
+            <div class="fx-chain-overview">
+                <div class="fx-chain-header">
+                    <span>Sample FX Chain</span>
+                    <div id="fxAddEffectMenu" class="fx-add-effect-menu"></div>
+                </div>
+                <div id="fxChainDevices" class="fx-chain-devices">
+                    <div class="fx-chain-empty">No effects. Add an effect using the buttons above.</div>
+                </div>
             </div>
         </div>
 
