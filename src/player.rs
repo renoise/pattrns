@@ -428,41 +428,45 @@ impl SamplePlayer {
         if self.playing_notes.iter().any(|notes| !notes.is_empty()) {
             // Process note stop events from the previous sequence
             let stop_time = if let Some(previous_sequence) = previous_sequence {
-                // Get maximum step length in samples of all currently playing back patterns
+                // Get maximum pattern step length in samples of all currently playing back patterns
                 let mut max_step_length: ExactSampleTime = 0.0;
                 for pattern_slot in previous_sequence.current_phrase().pattern_slots() {
                     if let PatternSlot::Pattern(pattern) = pattern_slot {
-                        max_step_length = max_step_length.max(pattern.borrow().step_length());
+                        let pattern = pattern.borrow();
+                        // We can't assume that every step produces a note-on, so run entire patterns
+                        // or at least 4 steps with dynamic pattern generators.
+                        max_step_length = max_step_length
+                            .max(pattern.step_length() * pattern.step_count().max(4) as f64);
                     }
                 }
                 // Run sequence and handle note-offs only to stop playing notes
-                let note_stope_lookup_time =
+                let note_stop_lookup_time =
                     time_offset + time + max_step_length.ceil() as SampleTime;
                 previous_sequence.consume_events_until_time(
-                    note_stope_lookup_time,
+                    note_stop_lookup_time,
                     &mut |pattern_index, pattern_event| {
-                        if !self.playing_notes[pattern_index].is_empty() {
-                            self.handle_pattern_event_note_offs(
-                                time_offset,
-                                pattern_index,
-                                pattern_event,
-                            );
-                        }
+                        self.handle_pattern_event_note_offs(
+                            time_offset,
+                            pattern_index,
+                            pattern_event,
+                        );
                     },
                 );
                 // stop remaining notes at the lookup time range's end
-                note_stope_lookup_time
+                note_stop_lookup_time
             } else {
                 // stop remaining notes at the time the new sequence starts
                 time_offset + time
             };
-            // stop remaining playing notes at the time we're applying the new sequence
+            // stop remaining playing notes at the lookup time or time we're applying the new sequence
             for playing_notes in &mut self.playing_notes {
-                for playing_note in playing_notes.values() {
-                    // ignore result: source maybe already is stopped
-                    let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                for playing_note in playing_notes.values_mut() {
+                    if playing_note.stop_time.is_none() {
+                        // ignore stop result: source maybe already is stopped
+                        let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                        playing_note.stop_time = Some(stop_time);
+                    }
                 }
-                playing_notes.clear();
             }
         }
         // update playing notes state to fit the new sequence
@@ -511,14 +515,16 @@ impl SamplePlayer {
                         && note_event.glide.is_none()
                         && self.new_note_action != NewNoteAction::Continue)
                 {
-                    if let Some(playing_note) = self.playing_notes[pattern_index].get(&voice_index)
-                    {
-                        // ignore stop result: source maybe already is stopped
-                        let stop_time =
-                            self.note_event_time(&pattern_event, note_event, time_offset);
-                        let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                    let stop_time = self.note_event_time(&pattern_event, note_event, time_offset);
 
-                        self.playing_notes[pattern_index].remove(&voice_index);
+                    if let Some(playing_note) =
+                        self.playing_notes[pattern_index].get_mut(&voice_index)
+                    {
+                        if playing_note.stop_time.is_none_or(|time| time > stop_time) {
+                            // ignore stop result: source maybe already is stopped
+                            let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                            playing_note.stop_time = Some(stop_time)
+                        }
                     }
                 }
             }
@@ -546,6 +552,13 @@ impl SamplePlayer {
             );
         }
 
+        // Remove expired pending note stops
+        self.playing_notes[pattern_index].retain(|_, playing_note| {
+            playing_note
+                .stop_time
+                .is_none_or(|stop_time| stop_time >= pattern_event.time + time_offset)
+        });
+
         // Process note events
         if let Some(Event::NoteEvents(notes)) = &pattern_event.event {
             for (voice_index, note_event) in notes.iter().enumerate() {
@@ -559,14 +572,16 @@ impl SamplePlayer {
                         && note_event.glide.is_none()
                         && self.new_note_action != NewNoteAction::Continue)
                 {
-                    if let Some(playing_note) = self.playing_notes[pattern_index].get(&voice_index)
-                    {
-                        // ignore stop result: source maybe already is stopped
-                        let stop_time =
-                            self.note_event_time(&pattern_event, note_event, time_offset);
-                        let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                    let stop_time = self.note_event_time(&pattern_event, note_event, time_offset);
 
-                        self.playing_notes[pattern_index].remove(&voice_index);
+                    if let Some(playing_note) =
+                        self.playing_notes[pattern_index].get_mut(&voice_index)
+                    {
+                        if playing_note.stop_time.is_none_or(|time| time > stop_time) {
+                            // ignore stop result: source maybe already is stopped
+                            let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                            playing_note.stop_time = Some(stop_time);
+                        }
                     }
                 }
                 // Play new note
@@ -634,41 +649,44 @@ impl SamplePlayer {
         start_time: SampleTime,
     ) -> bool {
         if let Some(playing_note) = self.playing_notes[pattern_index].get(&voice_index) {
-            let midi_note =
-                (note_event.note as i32 + 60 - self.sample_root_note as i32).clamp(0, 127) as u8;
-            let speed = speed_from_note(midi_note);
-            let volume = note_event.volume.max(0.0);
-            let panning = note_event.panning.clamp(-1.0, 1.0);
-            let glide = note_event.glide.unwrap_or(0.0).max(0.0);
-            let semitones_per_sec_glide = Self::note_glide_value(
-                glide,
-                playing_note.note,
-                note_event.note,
-                self.inner.output_sample_rate(),
-                pattern_event.duration,
-            );
-            let playback_id = playing_note.playback_id;
-            self.inner
-                .set_source_speed(
-                    playback_id,
-                    speed,
-                    Some(semitones_per_sec_glide),
-                    start_time,
-                )
-                .and(self.inner.set_source_volume(
-                    playback_id,
-                    volume,
-                    start_time, //
-                ))
-                .and(self.inner.set_source_panning(
-                    playback_id,
-                    panning,
-                    start_time, //
-                ))
-                .is_ok()
-        } else {
-            false
+            if playing_note.stop_time.is_none_or(|t| t > start_time) {
+                let midi_note = (note_event.note as i32 + 60 - self.sample_root_note as i32)
+                    .clamp(0, 127) as u8;
+                let speed = speed_from_note(midi_note);
+                let volume = note_event.volume.max(0.0);
+                let panning = note_event.panning.clamp(-1.0, 1.0);
+                let glide = note_event.glide.unwrap_or(0.0).max(0.0);
+                let semitones_per_sec_glide = Self::note_glide_value(
+                    glide,
+                    playing_note.note,
+                    note_event.note,
+                    self.inner.output_sample_rate(),
+                    pattern_event.duration,
+                );
+                let playback_id = playing_note.playback_id;
+                return self
+                    .inner
+                    .set_source_speed(
+                        playback_id,
+                        speed,
+                        Some(semitones_per_sec_glide),
+                        start_time,
+                    )
+                    .and(self.inner.set_source_volume(
+                        playback_id,
+                        volume,
+                        start_time, //
+                    ))
+                    .and(self.inner.set_source_panning(
+                        playback_id,
+                        panning,
+                        start_time, //
+                    ))
+                    .is_ok();
+            }
         }
+        // no note playing which can be glided
+        false
     }
 
     fn play_new_note(
@@ -714,6 +732,7 @@ impl SamplePlayer {
                 PlayingNote {
                     playback_id,
                     note: note_event.note,
+                    stop_time: None,
                 },
             );
         } else {
@@ -738,7 +757,10 @@ impl SamplePlayer {
 /// Single playing note in a player pattern's channel.
 #[derive(Debug, Clone, Copy)]
 struct PlayingNote {
+    /// The playback ID of the playing note.
     playback_id: PlaybackId,
-    #[allow(unused)]
+    /// The MIDI note value of the playing note.
     note: Note,
+    /// Some, when a stop note is scheduled for the note.
+    stop_time: Option<SampleTime>,
 }
