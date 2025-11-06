@@ -117,6 +117,17 @@ impl SamplePool {
         Ok(id)
     }
 
+    /// Removes the sample with the given id from the pool.
+    /// Returns the removed sample, or None when it was not found.
+    pub fn remove_sample(&self, id: InstrumentId) -> Option<PreloadedFileSource> {
+        self.pool.remove(&id).map(|(_, v)| v)
+    }
+
+    /// Retains samples where the given predicate returns true and discards all others.
+    pub fn retain_samples(&self, mut func: impl FnMut(InstrumentId) -> bool) {
+        self.pool.retain(move |k, _| func(*k))
+    }
+
     /// Get a single default instrument routing or None when there was none set.
     pub fn target_mixer(&self, instrument: InstrumentId) -> Option<MixerId> {
         self.routing.get(&instrument).map(|m| *m)
