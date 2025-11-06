@@ -36,16 +36,6 @@ pub use phonic::{
 
 // -------------------------------------------------------------------------------------------------
 
-/// Preload time of the player's `run_until` function. Should be big enough to ensure that events
-/// are scheduled ahead of playback time, but small enough to avoid too much latency.
-/// NB: real audio/event latency is twice the amount of the preload!
-#[cfg(debug_assertions)]
-const PLAYBACK_PRELOAD_SECONDS: f64 = 1.0;
-#[cfg(not(debug_assertions))]
-const PLAYBACK_PRELOAD_SECONDS: f64 = 0.5;
-
-// -------------------------------------------------------------------------------------------------
-
 /// Preloads a set of sample files and stores them in a DashMap as [`PreloadedFileSource`]
 /// for later use.
 ///
@@ -217,6 +207,7 @@ pub struct SamplePlayer {
     playing_notes: Vec<HashMap<usize, PlayingNote>>,
     new_note_action: NewNoteAction,
     sample_root_note: Note,
+    playback_preload_time: Duration,
     playback_pos_emit_rate: Duration,
     show_events: bool,
     playback_sample_time: SampleTime,
@@ -224,6 +215,10 @@ pub struct SamplePlayer {
 }
 
 impl SamplePlayer {
+    /// Default preload time of the player's `run_until` function.
+    /// Quite high by default and bigger in slower debug builds.
+    const DEFAULT_PLAYBACK_PRELOAD_MS: u64 = if cfg!(debug_assertions) { 500 } else { 250 };
+
     /// Create a new sample player from the given shared SamplePool.
     ///
     /// # Errors
@@ -238,6 +233,7 @@ impl SamplePlayer {
         let playing_notes = Vec::new();
         let new_note_action = NewNoteAction::default();
         let sample_root_note = Note::C5;
+        let playback_preload = Duration::from_millis(Self::DEFAULT_PLAYBACK_PRELOAD_MS);
         let playback_pos_emit_rate = Duration::from_secs(1);
         let show_events = false;
         let playback_sample_time = inner.output_sample_frame_position();
@@ -248,6 +244,7 @@ impl SamplePlayer {
             playing_notes,
             new_note_action,
             sample_root_note,
+            playback_preload_time: playback_preload,
             playback_pos_emit_rate,
             show_events,
             playback_sample_time,
@@ -273,12 +270,25 @@ impl SamplePlayer {
     pub fn show_events(&self) -> bool {
         self.show_events
     }
-    /// by default false: set to true to dump events to stdout while playing them.
+    /// By default false: set to true to dump events to stdout while playing them.
     pub fn set_show_events(&mut self, show: bool) {
         self.show_events = show;
     }
 
-    /// playback pos emit rate of triggered files. by default one second.
+    /// Preload time of the `run_until` function. By default 1/2 seconds in debug builds
+    /// and 1/4 seconds in release builds. Should be big enough to ensure that events are
+    /// scheduled ahead of playback time, but small enough to avoid too much latency.
+    ///
+    /// NB: real audio latency is twice the amount of the given time duration, plus the
+    /// audio driver's output latency.
+    pub fn playback_preload_time(&self) -> Duration {
+        self.playback_preload_time
+    }
+    pub fn set_playback_preload_time(&mut self, preload_time: Duration) {
+        self.playback_preload_time = preload_time;
+    }
+
+    /// Playback pos emit rate of triggered files. by default one second.
     pub fn playback_pos_emit_rate(&self) -> Duration {
         self.playback_pos_emit_rate
     }
@@ -286,20 +296,20 @@ impl SamplePlayer {
         self.playback_pos_emit_rate = emit_rate;
     }
 
-    /// get current new note action behavior.
+    /// Get current new note action behavior.
     pub fn new_note_action(&self) -> NewNoteAction {
         self.new_note_action
     }
-    // set a new new note action behavior.
+    // Set a new new note action behavior.
     pub fn set_new_note_action(&mut self, action: NewNoteAction) {
         self.new_note_action = action;
     }
 
-    /// get root note used when converting event note values to sample playback speed.
+    /// Get root note used when converting event note values to sample playback speed.
     pub fn sample_root_note(&self) -> Note {
         self.sample_root_note
     }
-    // set a new global root note.
+    // Set a new global root note.
     pub fn set_sample_root_note(&mut self, root_note: Note) {
         self.sample_root_note = root_note;
     }
@@ -368,20 +378,15 @@ impl SamplePlayer {
             );
         }
         while !stop_fn() {
+            let playback_preload_secs = self.playback_preload_time.as_secs_f64();
             // calculate emitted and playback time differences
             let seconds_emitted = time_base.samples_to_seconds(self.emitted_sample_time);
             let seconds_played = time_base.samples_to_seconds(
                 self.inner.output_sample_frame_position() - self.playback_sample_time,
             );
-            let seconds_to_emit = seconds_played - seconds_emitted + PLAYBACK_PRELOAD_SECONDS * 2.0;
-            // run sequence ahead of player up to PRELOAD_SECONDS
-            if seconds_to_emit >= PLAYBACK_PRELOAD_SECONDS || self.emitted_sample_time == 0 {
-                log::debug!(target: "Player",
-                    "Seconds emitted {:.2}s - Seconds played {:.2}s: Emitting {:.2}s",
-                    seconds_emitted,
-                    seconds_played,
-                    seconds_to_emit
-                );
+            let seconds_to_emit = seconds_played - seconds_emitted + playback_preload_secs * 2.0;
+            // run sequence ahead of player by the self.playback_preload time
+            if seconds_to_emit >= playback_preload_secs || self.emitted_sample_time == 0 {
                 let samples_to_emit = time_base.seconds_to_samples(seconds_to_emit);
                 self.run_until_time(
                     sequence,
@@ -392,8 +397,7 @@ impl SamplePlayer {
             } else {
                 // wait until next events are due, but check stop_fn at least every...
                 const MAX_SLEEP_TIME: f64 = 0.1;
-                let time_until_next_emit_batch =
-                    (PLAYBACK_PRELOAD_SECONDS - seconds_to_emit).max(0.0);
+                let time_until_next_emit_batch = (playback_preload_secs - seconds_to_emit).max(0.0);
                 let mut time_slept = 0.0;
                 while time_slept < time_until_next_emit_batch && !stop_fn() {
                     let sleep_amount = time_until_next_emit_batch.min(MAX_SLEEP_TIME);
