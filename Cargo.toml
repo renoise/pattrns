@@ -36,15 +36,14 @@ mlua = { version = "^0.11", features = [
 ], optional = true }
 
 # optional -> player
-crossbeam-channel = { version = "^0.5", default-features = false, optional = true }
 dashmap = { version = "^6.1", optional = true }
-phonic = { version = "^0.11", default-features = false, optional = true }
+phonic = { version = "^0.12", default-features = false, optional = true }
 
 # dev dependencies
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 pretty_assertions = { version = "^1.4" }
 notify = { version = "^8.0", default-features = false }
-ctrlc = { version = "^3.4" }
+ctrlc = { version = "^3.5" }
 criterion = { version = "^0.7", default-features = false }
 simplelog = { version = "^0.12", default-features = false, features = [
     "termcolor",
@@ -63,7 +62,7 @@ debug = "full"
 dhat-profiler = ["dhat"]
 
 # example player implementation
-player = ["crossbeam-channel", "dashmap", "phonic"]
+player = ["dashmap", "phonic"]
 # example player's audio output driver 
 web-output = ["phonic/web-output"]
 cpal-output = ["phonic/cpal-output"]
