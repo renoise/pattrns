@@ -140,7 +140,7 @@ struct Playground {
 
 impl Playground {
     // Event scheduler read-ahead time (latency)
-    const PLAYBACK_PRELOAD_SECONDS: f64 = if cfg!(debug_assertions) { 1.0 } else { 0.25 };
+    const PLAYBACK_PRELOAD_SECONDS: f64 = if cfg!(debug_assertions) { 0.2 } else { 0.1 };
     // Max expected MIDI notes
     const NUM_MIDI_NOTES: usize = 127;
     // Path to our assets folder. see build.rs.
@@ -330,20 +330,25 @@ impl Playground {
             self.output_start_sample_time = self.player.inner().output_sample_frame_position();
             self.emitted_sample_time = 0;
             // memorize playing note
+            let sample_offset = 0;
             let new_note = PlayingNote {
                 note,
                 velocity,
-                sample_offset: 0,
+                sample_offset,
             };
             self.playing_notes.push(new_note);
             // rebuild sequence
             self.script_changed = true;
         } else {
             // memorize playing note
+            let playback_preload = self
+                .time_base
+                .seconds_to_samples(self.player.playback_preload_time().as_secs_f64());
+            let sample_offset = self.emitted_sample_time.saturating_sub(playback_preload);
             let new_note = PlayingNote {
                 note,
                 velocity,
-                sample_offset: self.emitted_sample_time,
+                sample_offset,
             };
             self.playing_notes.push(new_note.clone());
             // add a new pattern for the new note
@@ -379,6 +384,7 @@ impl Playground {
             }
             // restore default playback in `run` with the last note removed
             if self.playing_notes.is_empty() {
+                let _ = self.player.stop_all_sources();
                 self.script_changed = true;
             }
         }
