@@ -6,14 +6,13 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
+        mpsc::SyncSender,
         Arc,
     },
     time::Duration,
 };
 
 use dashmap::DashMap;
-
-use crossbeam_channel::Sender;
 
 use phonic::{
     sources::PreloadedFileSource, utils::speed_from_note, DefaultOutputDevice, Error,
@@ -207,10 +206,10 @@ pub struct SamplePlayer {
     playing_notes: Vec<HashMap<usize, PlayingNote>>,
     new_note_action: NewNoteAction,
     sample_root_note: Note,
-    playback_preload_time: Duration,
-    playback_pos_emit_rate: Duration,
     show_events: bool,
-    playback_sample_time: SampleTime,
+    playback_pos_emit_rate: Duration,
+    playback_preload_time: Duration,
+    playback_start_sample_time: SampleTime,
     emitted_sample_time: SampleTime,
 }
 
@@ -223,31 +222,35 @@ impl SamplePlayer {
     ///
     /// # Errors
     /// returns an error if the player could not be created.
-    pub fn new<S: Into<Option<Sender<PlaybackStatusEvent>>>>(
+    pub fn new<S: Into<Option<SyncSender<PlaybackStatusEvent>>>>(
         sample_pool: Arc<SamplePool>,
         playback_status_sender: S,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // create player
         let audio_output = DefaultOutputDevice::open()?;
         let inner = PhonicPlayer::new(audio_output, playback_status_sender);
+
         let playing_notes = Vec::new();
+
         let new_note_action = NewNoteAction::default();
         let sample_root_note = Note::C5;
-        let playback_preload = Duration::from_millis(Self::DEFAULT_PLAYBACK_PRELOAD_MS);
-        let playback_pos_emit_rate = Duration::from_secs(1);
         let show_events = false;
-        let playback_sample_time = inner.output_sample_frame_position();
+
+        let playback_pos_emit_rate = Duration::from_secs(1);
+        let playback_preload_time = Duration::from_millis(Self::DEFAULT_PLAYBACK_PRELOAD_MS);
+        let playback_start_sample_time = inner.output_sample_frame_position();
         let emitted_sample_time = 0;
+
         Ok(Self {
             inner,
             sample_pool,
             playing_notes,
             new_note_action,
             sample_root_note,
-            playback_preload_time: playback_preload,
-            playback_pos_emit_rate,
             show_events,
-            playback_sample_time,
+            playback_preload_time,
+            playback_pos_emit_rate,
+            playback_start_sample_time,
             emitted_sample_time,
         })
     }
@@ -352,13 +355,13 @@ impl SamplePlayer {
     }
 
     /// Run the given sequence until it stops or the passed stop condition function returns true.
-    pub fn run_until<StopFn: Fn() -> bool>(
+    pub fn run_until<StopFn: FnMut() -> bool>(
         &mut self,
         previous_sequence: Option<&mut Sequence>,
         sequence: &mut Sequence,
         time_base: &dyn SampleTimeBase,
         reset_playback_pos: bool,
-        stop_fn: StopFn,
+        mut stop_fn: StopFn,
     ) {
         // reset time counters when starting the first time or when explicitly requested, else continue
         // playing from our previous time to avoid interrupting playback streams
@@ -369,7 +372,7 @@ impl SamplePlayer {
             self.prepare_run_until_time(
                 previous_sequence,
                 sequence,
-                self.playback_sample_time,
+                self.playback_start_sample_time,
                 self.emitted_sample_time,
             );
             log::debug!(target: "Player",
@@ -377,32 +380,33 @@ impl SamplePlayer {
                 time_base.samples_to_seconds(self.emitted_sample_time)
             );
         }
+
         while !stop_fn() {
-            let playback_preload_secs = self.playback_preload_time.as_secs_f64();
-            // calculate emitted and playback time differences
-            let seconds_emitted = time_base.samples_to_seconds(self.emitted_sample_time);
-            let seconds_played = time_base.samples_to_seconds(
-                self.inner.output_sample_frame_position() - self.playback_sample_time,
-            );
-            let seconds_to_emit = seconds_played - seconds_emitted + playback_preload_secs * 2.0;
             // run sequence ahead of player by the self.playback_preload time
-            if seconds_to_emit >= playback_preload_secs || self.emitted_sample_time == 0 {
-                let samples_to_emit = time_base.seconds_to_samples(seconds_to_emit);
+            let samples_to_emit = self.calculate_samples_to_emit(
+                time_base,
+                self.playback_start_sample_time,
+                self.emitted_sample_time,
+            );
+            let playback_preload =
+                time_base.seconds_to_samples(self.playback_preload_time.as_secs_f64());
+            if samples_to_emit >= playback_preload || self.emitted_sample_time == 0 {
+                // consume events in the preload range
                 self.run_until_time(
                     sequence,
-                    self.playback_sample_time,
+                    self.playback_start_sample_time,
                     self.emitted_sample_time + samples_to_emit,
                 );
                 self.emitted_sample_time += samples_to_emit;
             } else {
-                // wait until next events are due, but check stop_fn at least every...
-                const MAX_SLEEP_TIME: f64 = 0.1;
-                let time_until_next_emit_batch = (playback_preload_secs - seconds_to_emit).max(0.0);
+                // wait until next events are due and call stop_fn
+                let max_sleep_time = self.playback_preload_time.as_secs_f64() / 4.0;
+                let seconds_until_next_emit_batch =
+                    time_base.samples_to_seconds(playback_preload.saturating_sub(samples_to_emit));
                 let mut time_slept = 0.0;
-                while time_slept < time_until_next_emit_batch && !stop_fn() {
-                    let sleep_amount = time_until_next_emit_batch.min(MAX_SLEEP_TIME);
-                    std::thread::sleep(std::time::Duration::from_secs_f64(sleep_amount));
-                    // log::debug!(target: "Player", "Slept {} seconds", sleep_amount);
+                while time_slept < seconds_until_next_emit_batch && !stop_fn() {
+                    let sleep_amount = seconds_until_next_emit_batch.min(max_sleep_time);
+                    std::thread::sleep(Duration::from_secs_f64(sleep_amount));
                     time_slept += sleep_amount;
                 }
             }
@@ -474,6 +478,27 @@ impl SamplePlayer {
             .resize_with(sequence.phrase_pattern_slot_count(), HashMap::new);
         // and finally prepare the new sequence by advancing it to the target time
         sequence.advance_until_time(time);
+    }
+
+    /// Calculate how many samples need to be emitted based on current playback position
+    /// and playback preload time.
+    pub fn calculate_samples_to_emit(
+        &self,
+        time_base: &dyn SampleTimeBase,
+        playback_start_sample_time: SampleTime,
+        emitted_sample_time: SampleTime,
+    ) -> SampleTime {
+        // current, relative playback time
+        let playback_head = self
+            .inner
+            .output_sample_frame_position()
+            .saturating_sub(playback_start_sample_time);
+        // current, relative emit time
+        let emitter_head = playback_head as i64 - emitted_sample_time as i64;
+        // apply 2 * preload: first half as buffer, second as fill area
+        let preload_samples =
+            time_base.seconds_to_samples(self.playback_preload_time.as_secs_f64());
+        (emitter_head + 2 * preload_samples as i64).max(0) as SampleTime
     }
 
     /// Manually seek the given sequence to the given time offset and actual position.
@@ -747,7 +772,7 @@ impl SamplePlayer {
         self.playing_notes
             .resize_with(sequence.phrase_pattern_slot_count(), HashMap::new);
         // fetch player's actual position and use it as start offset
-        self.playback_sample_time = self.inner.output_sample_frame_position();
+        self.playback_start_sample_time = self.inner.output_sample_frame_position();
         self.emitted_sample_time = 0;
     }
 }

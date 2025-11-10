@@ -156,15 +156,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-channel"
-version = "0.5.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crossbeam-queue"
 version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -558,7 +549,6 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "pattrns"
 version = "0.9.3"
 dependencies = [
- "crossbeam-channel",
  "dashmap",
  "derive_more",
  "lazy_static",
@@ -621,15 +611,14 @@ dependencies = [
 
 [[package]]
 name = "phonic"
-version = "0.11.2"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1fd25dfb07bfc402b468201176aec0c510d9e09d9632133cf8646ec8889ea8"
+checksum = "cd2f0d0889a4d8b7e7dc1070534cf07a50954886e1684993a1d7c1d1efd79b53"
 dependencies = [
  "assume",
  "audio_thread_priority",
  "basedrop",
  "byteorder",
- "crossbeam-channel",
  "crossbeam-queue",
  "dashmap",
  "emscripten-rs-macros",
