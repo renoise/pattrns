@@ -171,6 +171,7 @@ impl Playground {
         let mut player = SamplePlayer::new(Arc::clone(&sample_pool), None)?;
         player.set_sample_root_note(Note::C4);
         player.set_new_note_action(NewNoteAction::Off(Some(Duration::from_millis(350))));
+        player.set_playback_preload_time(Duration::from_secs_f64(Self::PLAYBACK_PRELOAD_SECONDS));
 
         // sequence & pattern
         let sequence = None;
@@ -294,11 +295,7 @@ impl Playground {
     pub fn start_playing(&mut self) {
         if !self.playing {
             // reset play head
-            let preload_offset = self
-                .time_base
-                .seconds_to_samples(Self::PLAYBACK_PRELOAD_SECONDS);
-            self.output_start_sample_time =
-                self.player.inner().output_sample_frame_position() + preload_offset;
+            self.output_start_sample_time = self.player.inner().output_sample_frame_position();
             self.emitted_sample_time = 0;
             // reset sequence
             if let Some(sequence) = self.sequence.as_mut() {
@@ -488,25 +485,23 @@ impl Playground {
 
         // run the player, when playing and audio output is not suspended
         if !suspended && (self.playing || !self.playing_notes.is_empty()) {
-            // calculate emitted and playback time differences
-            let time_base = self.time_base;
-            let output_sample_time = self.player.inner().output_sample_frame_position();
-            let samples_played = // can be be negative, because we start with a preload offset 
-                (output_sample_time as i64 - self.output_start_sample_time as i64).max(0) as u64;
-            let seconds_played = time_base.samples_to_seconds(samples_played);
-            let seconds_emitted = time_base.samples_to_seconds(self.emitted_sample_time);
-            // run sequence ahead of player up to PLAYBACK_PRELOAD_SECONDS seconds
-            let seconds_to_emit =
-                (seconds_played - seconds_emitted + Self::PLAYBACK_PRELOAD_SECONDS).max(0.0);
-            let samples_to_emit = time_base.seconds_to_samples(seconds_to_emit);
-            if seconds_to_emit > 4.0 * Self::PLAYBACK_PRELOAD_SECONDS {
+            // calculate samples to emit
+            let samples_to_emit = self.player.calculate_samples_to_emit(
+                &self.time_base,
+                self.output_start_sample_time,
+                self.emitted_sample_time,
+            );
+            let playback_preload = self
+                .time_base
+                .seconds_to_samples(self.player.playback_preload_time().as_secs_f64());
+            if samples_to_emit > 4 * playback_preload {
                 // we lost too much time: maybe because the browser suspended the run loop
                 self.player.advance_until_time(
                     self.sequence.as_mut().unwrap(),
                     self.emitted_sample_time + samples_to_emit,
                 );
             } else if samples_to_emit > 0 {
-                // continue running player to generate events in real-time
+                // continue generating events in real-time
                 self.player.run_until_time(
                     self.sequence.as_mut().unwrap(),
                     self.output_start_sample_time,
