@@ -202,6 +202,7 @@ const app = {
     _changedHashFromUserEdit: false,
     _changedScriptFromHash: false,
     _midiEnabled: false,
+    _bpmInput: null,
 
     initialize: function () {
         // hide spinner, show content
@@ -270,6 +271,22 @@ const app = {
         }
     },
 
+    _getUserBpm: function () {
+        const bpm = parseInt(this._bpmInput.value);
+        console.log(this._bpmInput)
+        if (!isNaN(bpm)) {
+            const clampedBpm = Math.max(this._bpmInput.min, Math.min(bpm, this._bpmInput.max));
+            if (bpm !== clampedBpm) {
+                this._bpmInput.value = clampedBpm;
+            }
+          console.log("returning deefault bpm")
+            return clampedBpm;
+        } else {
+          console.log("returning deefault bpm")
+            return defaultBpm;
+        }
+    },
+
     // Init transport controls
     _initControls: function () {
         // Set up control handlers
@@ -282,19 +299,15 @@ const app = {
 
         const bpmInput = document.getElementById('bpmInput');
         console.assert(bpmInput);
+        this._bpmInput = bpmInput
 
         bpmInput.min = 20;
         bpmInput.max = 999;
-        bpmInput.addEventListener('change', (e) => {
-            const bpm = parseInt(e.target.value);
-            if (!isNaN(bpm)) {
-                const clampedBpm = Math.max(bpmInput.min, Math.min(bpm, bpmInput.max));
-                if (bpm !== clampedBpm) {
-                    e.target.value = clampedBpm;
-                }
-                backend.updateBpm(clampedBpm);
-                this.setStatus(`Set new BPM: '${clampedBpm}'`);
-            }
+        bpmInput.addEventListener('change', () => {
+            const bpm = this._getUserBpm();            
+            backend.updateBpm(bpm);
+            this._updateHash();
+            this.setStatus(`Set new BPM: '${bpm}'`);
         });
 
         const volumeSlider = document.getElementById('volumeSlider');
@@ -528,7 +541,7 @@ const app = {
         }
     },
 
-    _updateScript: function({script, name, instrument}) {
+    _updateScript: function({script, name, instrument, bpm}) {
         this._selectInstrument(instrument);
         
         if (backend.isPlaying()) {
@@ -538,10 +551,31 @@ const app = {
         } else {
             backend.updateScriptContent(script);
         }
+        backend.updateBpm(bpm);
+        this._bpmInput.value = bpm;
         this._editor.setScrollPosition({ scrollTop: 0 });
         this._updateEditCount(0);
-                
+        this._highlightSelectedExample(name);
         this.setStatus(`Loaded script: '${name}'.`);
+    },
+
+    _loadScript: function(data, pushState) {
+        if (pushState) {
+          window.history.pushState({}, "", `#${this._encodeScript(data)}`);
+        }
+        this._changedScriptFromHash = true;
+        this._editor.setValue(data.script);
+        this._updateScript(data);
+    },
+
+    _highlightSelectedExample: function(name) {
+        document.querySelectorAll(".example-link").forEach(link => {
+            link.classList.toggle("selected", link.dataset.name == name)
+        });
+    },
+
+    _slugify: function(string) {
+        return string.split(" ").map(p => p.toLowerCase()).join("-");
     },
 
     // Set up example scripts list
@@ -562,18 +596,18 @@ const app = {
             const a = document.createElement('a');
             a.textContent = example.name;
             a.classList.add("example-link")
+            a.dataset.name = this._slugify(example.name);
             li.appendChild(a);
             examplesList.appendChild(li);
             a.onclick = () => {
-                window.location.hash = `#${this._encodeScript({
+                const scriptData = {
                     script: example.content,
-                    name: example.name,
+                    name: this._slugify(example.name),
+                    bpm: this._getUserBpm(),
                     instrument: document.getElementById("sampleSelect").value
-                })}`;
-                document.querySelectorAll(".example-link").forEach(link => {
-                    link.classList.remove("selected")
-                });
-                a.classList.add("selected");
+                };
+
+                this._loadScript(scriptData, true);
             }
         }
 
@@ -593,11 +627,11 @@ const app = {
         examples.forEach(appendExampleLink);
     },
 
-    _encodeScript: function ({script, name, instrument}) {
-        return btoa(JSON.stringify({ script, name, instrument }));
+    _encodeScript: function (scriptData) {
+        return btoa(JSON.stringify(scriptData));
     },
     
-    _decodeScriptFromHash: function (defaultScriptData = {script: "", name: "untitled", instrument: null}) {
+    _decodeScriptFromHash: function (defaultScriptData = {script: defaultScriptContent, name: "default", instrument: null, bpm: defaultBpm}) {
         const hash = window.location.hash;
         if (hash.length < 2) {
             return defaultScriptData;
@@ -613,11 +647,15 @@ const app = {
 
     _updateHash: function () {
         this._changedHashFromUserEdit = true;
-        window.location.hash = this._encodeScript({
+        
+        const encoded = this._encodeScript({
             script: this._editor.getValue(),
             name: "custom",
+            bpm: this._getUserBpm(),
             instrument: document.getElementById("sampleSelect").value
         });
+        
+        window.history.replaceState({}, "", `#${encoded}`);
     },
 
     // Initialize Monaco editor
@@ -632,6 +670,8 @@ const app = {
             // Try parsing script from URL hash or use the default
             const scriptData = this._decodeScriptFromHash({
                 script: defaultScriptContent,
+                bpm: defaultBpm,
+                instrument: null,
                 name: "Default Script",
             });
             
@@ -710,15 +750,19 @@ const app = {
                 }
             });
 
+            window.addEventListener("popstate", () => {
+                this._changedHashFromUserEdit = false;
+            });
+
             window.addEventListener("hashchange", () => {
                 if (this._changedHashFromUserEdit) {
                     this._changedHashFromUserEdit = false;
                     return;
                 }
                 const scriptData = this._decodeScriptFromHash();
+
                 this._changedScriptFromHash = true;
-                this._editor.setValue(scriptData.script);
-                this._updateScript(scriptData);
+                this._loadScript(scriptData, false);
             });
             
             /*
