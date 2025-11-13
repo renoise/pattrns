@@ -273,16 +273,13 @@ const app = {
 
     _getUserBpm: function () {
         const bpm = parseInt(this._bpmInput.value);
-        console.log(this._bpmInput)
         if (!isNaN(bpm)) {
             const clampedBpm = Math.max(this._bpmInput.min, Math.min(bpm, this._bpmInput.max));
             if (bpm !== clampedBpm) {
                 this._bpmInput.value = clampedBpm;
             }
-          console.log("returning deefault bpm")
             return clampedBpm;
         } else {
-          console.log("returning deefault bpm")
             return defaultBpm;
         }
     },
