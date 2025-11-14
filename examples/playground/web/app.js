@@ -11,10 +11,11 @@ const defaultScriptContent = `--
 -- Check out the interactive 'Quickstart' scripts on the right or load examples
 -- to get started.
 --
--- **Nothing is persistent here**: Copy and save scripts locally to keep them!
+-- **Nothing is persistent here**: Copy and save scripts locally to keep them, or
+-- save and share the playground URL somewhere - it contains the script in the hash.
 --
 -- The playground uses a simple sample player backend. The currently selected 
--- sample plays by default, unless your script specifies an instrument explicitely.
+-- sample plays by default, unless your script specifies an instrument explicitly.
 --
 -- Use 'CTRL+Return' or 'CTRL+S' to apply script changes.
 -- Use 'CTRL+SHIFT+SPACE' to start/stop playing.
@@ -22,10 +23,10 @@ const defaultScriptContent = `--
 
 -- the note patterns that we're emitting
 local note_patterns = {
-  { "c5", "d#5", "c6", "g5", "c5", "g#4" },
-  { "c4", "d#4", "f4", "c5", "d#5", "f5" },
-  { "d#5", "g5", "d#5", "c6", "g#4", "c5" },
-  { "d#4", "c4", "f4", "c5", "f4", "d#5"  },
+  { "c#4", "f4", "c5", "f5", "g#4", "f4" },
+  { "a#4", "g#4", "f4", "a#3", "g#3", "f3" },
+  { "f4", "c#4", "f5", "g#4", "c5", "g#4" },
+  { "g#4", "a#3", "f4", "a#3", "f3", "g#3" }
 }
 
 -- get arp direction step sign from the given direction parameter mode string
