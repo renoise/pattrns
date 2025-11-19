@@ -199,14 +199,6 @@ impl TryFrom<&str> for Note {
 
     /// Try converting the given string to a Note value
     fn try_from(s: &str) -> Result<Self, String> {
-        fn is_empty_note(s: &str) -> bool {
-            s.is_empty() || s.trim_matches(|c| c == '-').is_empty()
-        }
-
-        fn is_note_off(s: &str) -> bool {
-            s.eq_ignore_ascii_case("off") || s == "~"
-        }
-
         fn is_sharp_symbol(s: &str, index: usize) -> bool {
             if let Some(c) = s.chars().nth(index) {
                 if c == 'S' || c == 's' || c == '#' || c == '♮' {
@@ -274,16 +266,44 @@ impl TryFrom<&str> for Note {
         }
 
         // Empty Note
-        if is_empty_note(s) {
+        if s.is_empty() || s.trim_matches(|c| c == '-').is_empty() {
             return Ok(Note::EMPTY);
         }
 
         // Note-Off
-        if is_note_off(s) {
+        if s.eq_ignore_ascii_case("off") || s == "~" {
             return Ok(Note::OFF);
         }
 
-        // Note-On
+        // Note hex integer string
+        if let Some(hex_s) = s.strip_prefix("0x").or(s.strip_prefix("0X")) {
+            // coerce string to note hex integer value
+            let integer = i32::from_str_radix(hex_s, 16).map_err(|err| {
+                format!("invalid note str '{s}' - invalid hex integer string: {err}.")
+            })?;
+            return match integer {
+                0..=0x7f | 0xFE | 0xFF => Ok(Note::from(integer as u8)),
+                _ => Err(format!(
+                    "invalid note str '{s}' - note number must be 0xFF (empty note) or 0xFE (off note) or in range [0..=127]",
+                )),
+            };
+        };
+
+        // Note integer string
+        if s.chars().all(|c| c.is_ascii_digit()) {
+            // coerce string to note integer value
+            let integer = s.parse::<i32>().map_err(|err| {
+                format!("invalid note str '{s}' - invalid integer string: {err}.")
+            })?;
+            return match integer {
+                0..=0x7f | 0xFE | 0xFF => Ok(Note::from(integer as u8)),
+                _ => Err(format!(
+                    "invalid note str '{s}' - note number must be 0xFF (empty note) or 0xFE (off note) or in range [0..=127]",
+                )),
+            };
+        }
+
+        // Note-On string with key & octave
         let note = note_value_at(s, 0)? as i32;
         let octave = if is_sharp_symbol(s, 1) || is_flat_symbol(s, 1) || is_empty_symbol(s, 1) {
             if s.len() > 2 && !is_white_space_symbol(s, 2) {
