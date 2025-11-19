@@ -485,14 +485,22 @@ pub(crate) fn note_degree_from_value(arg: &LuaValue, arg_index: usize) -> LuaRes
     }
 }
 
-pub(crate) fn note_event_from_number(note_value: LuaInteger) -> LuaResult<Option<NoteEvent>> {
+pub(crate) fn note_from_number(note_value: LuaInteger) -> LuaResult<Note> {
     match note_value {
-        0..=0x7f | 0xFE | 0xFF => Ok(new_note(note_value as u8)),
+        0..=0x7f | 0xFE | 0xFF => Ok(Note::from(note_value as u8)),
         _ => Err(LuaError::RuntimeError(format!(
-            "note number must be 0xFF for empty notes or 0xFE for off notes or must be in range [0..=0x7f], but is: '{}'",
+            "note number must be 0xFF (empty note) or 0xFE (off note) or in range [0..=127], but is: '{}'",
             note_value
         ))),
     }
+}
+
+pub(crate) fn note_event_from_number(note_value: LuaInteger) -> LuaResult<Option<NoteEvent>> {
+    Ok(new_note(note_from_number(note_value)?))
+}
+
+pub(crate) fn note_from_string(note_string: &str) -> Result<Note, LuaError> {
+    Note::try_from(note_string).map_err(|err| LuaError::RuntimeError(err.to_string()))
 }
 
 pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> {
@@ -501,8 +509,7 @@ pub(crate) fn note_event_from_string(str: &str) -> LuaResult<Option<NoteEvent>> 
     if is_empty_note_string(note_part) {
         Ok(None)
     } else {
-        let note =
-            Note::try_from(note_part).map_err(|err| LuaError::RuntimeError(err.to_string()))?;
+        let note = note_from_string(note_part)?;
         let mut instrument = None;
         let mut volume = 1.0;
         let mut panning = 0.0;
