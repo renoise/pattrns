@@ -269,6 +269,7 @@ mod test {
         // Note string
         assert!(evaluate_note_userdata(&lua, r#"note("X#1")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("0.5")"#).is_err());
+        assert!(evaluate_note_userdata(&lua, r#"note("0xfff")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("C#1 -0.5")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("C#1", 0.5)"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("C#1")"#).is_ok());
@@ -305,8 +306,18 @@ mod test {
         let note_event = evaluate_note_userdata(&lua, r#"note(0x32)"#)?;
         assert_eq!(note_event.notes, vec![new_note("d4")]);
 
+        // Note int string
+        let note_event = evaluate_note_userdata(&lua, r#"note("32")"#)?;
+        assert_eq!(note_event.notes, vec![new_note("g#2")]);
+        let note_event = evaluate_note_userdata(&lua, r#"note("0x32")"#)?;
+        assert_eq!(note_event.notes, vec![new_note("d4")]);
+
         // Note int array
         let note_event = evaluate_note_userdata(&lua, r#"note({0x32, 48})"#)?;
+        assert_eq!(note_event.notes, vec![new_note("d4"), new_note("c4")]);
+
+        // Note int string array
+        let note_event = evaluate_note_userdata(&lua, r#"note({"0X32", "48"})"#)?;
         assert_eq!(note_event.notes, vec![new_note("d4"), new_note("c4")]);
 
         // Note table
@@ -318,6 +329,10 @@ mod test {
         assert_eq!(note_event.notes, vec![new_note("c8")]);
         let note_event = evaluate_note_userdata(&lua, r#"note({key = "G8", volume = 0.5})"#)?;
         assert_eq!(note_event.notes, vec![new_note(("g8", None, 0.5))]);
+        let note_event = evaluate_note_userdata(&lua, r#"note({key = 60})"#)?;
+        assert_eq!(note_event.notes, vec![new_note("c5")]);
+        let note_event = evaluate_note_userdata(&lua, r#"note({key = "60"})"#)?;
+        assert_eq!(note_event.notes, vec![new_note("c5")]);
 
         // Note table or array
         let poly_note_event = evaluate_note_userdata(
@@ -357,6 +372,7 @@ mod test {
         // Note chord
         assert!(evaluate_note_userdata(&lua, r#"note("c12'maj")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("j'maj")"#).is_err());
+        assert!(evaluate_note_userdata(&lua, r#"note("128'maj")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("c4'invalid")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("c4'maj'")"#).is_err());
         assert!(evaluate_note_userdata(&lua, r#"note("c4'maj xx")"#).is_err());
@@ -368,6 +384,14 @@ mod test {
 
         assert_eq!(
             evaluate_note_userdata(&lua, r#"note("c'maj")"#)?.notes,
+            vec![new_note("c4"), new_note("e4"), new_note("g4"),]
+        );
+        assert_eq!(
+            evaluate_note_userdata(&lua, r#"note("60'maj")"#)?.notes,
+            vec![new_note("c5"), new_note("e5"), new_note("g5"),]
+        );
+        assert_eq!(
+            evaluate_note_userdata(&lua, r#"note("0x30'maj")"#)?.notes,
             vec![new_note("c4"), new_note("e4"), new_note("g4"),]
         );
         assert_eq!(

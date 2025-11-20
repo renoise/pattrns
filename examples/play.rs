@@ -6,7 +6,6 @@ use std::{
     },
 };
 
-use anyhow::anyhow;
 use simplelog::*;
 
 use pattrns::prelude::*;
@@ -36,25 +35,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // preload samples
-    fn sample_path(file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(
-            path::PathBuf::from(format!("./examples/assets/{file_name}"))
-                .to_str()
-                .ok_or(anyhow!(
-                    "Failed to create asset path for file '{}'",
-                    file_name
-                ))?
-                .to_string(),
-        )
+    fn sample_path(file_name: &str) -> String {
+        path::PathBuf::from(format!("./examples/assets/{file_name}"))
+            .to_string_lossy()
+            .to_string()
     }
     let sample_pool = Arc::new(SamplePool::new());
-    let KICK = sample_pool.load_sample(&sample_path("kick.wav")?)?;
-    let SNARE = sample_pool.load_sample(&sample_path("snare.wav")?)?;
-    let HIHAT = sample_pool.load_sample(&sample_path("hihat.wav")?)?;
-    let BASS = sample_pool.load_sample(&sample_path("bass.wav")?)?;
-    let SYNTH = sample_pool.load_sample(&sample_path("synth.wav")?)?;
-    // let TONE = sample_pool.load_sample(&sample_path("tone.wav")?)?;
-    let FX = sample_pool.load_sample(&sample_path("fx.wav")?)?;
+    let KICK = sample_pool.load_sample(sample_path("kick.wav"))?;
+    let SNARE = sample_pool.load_sample(sample_path("snare.wav"))?;
+    let HIHAT = sample_pool.load_sample(sample_path("hihat.wav"))?;
+    let BASS = sample_pool.load_sample(sample_path("bass.wav"))?;
+    let SYNTH = sample_pool.load_sample(sample_path("synth.wav"))?;
+    // let TONE = sample_pool.load_sample(sample_path("tone.wav"))?;
+    let FX = sample_pool.load_sample(sample_path("fx.wav"))?;
 
     // create event player
     let mut player = SamplePlayer::new(sample_pool, None)?;

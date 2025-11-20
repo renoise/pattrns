@@ -37,16 +37,17 @@
 ### find(t : [`table`](../../API/builtins/table.md), value : [`any`](../../API/builtins/any.md), start_index : [`integer`](../../API/builtins/integer.md)[`?`](../../API/builtins/nil.md))<a name="find"></a>
 `->`key : [`any`](../../API/builtins/any.md)  
 
-> Find first match of given value, starting from element
->  number start_index or 1.
+> Finds the key of the first element matching `value`.
 > 
-> Returns the first *key* that matches the value or nil
+> If `start_index` is provided, the search is performed on the array part of the
+> table (using `ipairs`) starting from that index. Otherwise, it searches the
+> entire table (using `pairs`).
 > 
 > #### examples:
 > ```lua
 > t = {"a", "b"}; table.find(t, "a") --> 1
 > t = {a=1, b=2}; table.find(t, 2) --> "b"
-> t = {"a", "b", "a"}; table.find(t, "a", 2) --> "3"
+> t = {"a", "b", "a"}; table.find(t, "a", 2) --> 3
 > t = {"a", "b"}; table.find(t, "c") --> nil
 > ```
 ### tostring(t : [`table`](../../API/builtins/table.md))<a name="tostring"></a>
