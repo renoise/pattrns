@@ -626,7 +626,7 @@ const app = {
     },
 
     _encodeScript: function (scriptData) {
-        return btoa(JSON.stringify(scriptData));
+        return btoa(unescape(encodeURIComponent(JSON.stringify(scriptData))));
     },
     
     _decodeScriptFromHash: function (defaultScriptData = {script: defaultScriptContent, name: "default", instrument: null, bpm: defaultBpm}) {
@@ -635,7 +635,7 @@ const app = {
             return defaultScriptData;
         }
         try {
-            const string = atob(hash.substring(1).split('?')[0]);
+            const string = decodeURIComponent(escape(atob(hash.substring(1).split("?")[0])));
             const object = JSON.parse(string)
             return object;
         } catch (e) {
