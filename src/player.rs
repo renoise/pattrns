@@ -363,12 +363,12 @@ impl SamplePlayer {
         reset_playback_pos: bool,
         mut stop_fn: StopFn,
     ) {
-        // reset time counters when starting the first time or when explicitly requested, else continue
-        // playing from our previous time to avoid interrupting playback streams
         if reset_playback_pos || self.emitted_sample_time == 0 {
+            // reset time counters and the sequence when starting the first time or when requested
             self.reset_playback_position(sequence);
             log::debug!(target: "Player", "Resetting playback pos");
         } else {
+            // else continue playing from our previous time, to avoid interrupting playback
             self.prepare_run_until_time(
                 previous_sequence,
                 sequence,
@@ -433,8 +433,14 @@ impl SamplePlayer {
             // Process note stop events from the previous sequence
             let stop_time = if let Some(previous_sequence) = previous_sequence {
                 // Get maximum pattern step length in samples of all currently playing back patterns
+                let pattern_slots = {
+                    match previous_sequence.current_phrase() {
+                        Some(phrase) => phrase.pattern_slots(),
+                        None => &[],
+                    }
+                };
                 let mut max_step_length: ExactSampleTime = 0.0;
-                for pattern_slot in previous_sequence.current_phrase().pattern_slots() {
+                for pattern_slot in pattern_slots {
                     if let PatternSlot::Pattern(pattern) = pattern_slot {
                         let pattern = pattern.borrow();
                         // We can't assume that every step produces a note-on, so run entire patterns
