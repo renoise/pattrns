@@ -39,6 +39,14 @@ impl Sequence {
 
     /// Update the sequence's internal time bases with a new time base.
     pub fn set_time_base(&mut self, time_base: &BeatTimeBase) {
+        // update samples to next phrase for the new time base
+        if let Some(phrase) = self.current_phrase() {
+            self.sample_position_in_phrase = (self.sample_position_in_phrase as f64
+                / phrase.length().to_samples(&self.time_base)
+                * phrase.length().to_samples(time_base))
+                as u64;
+        }
+        // apply new time base
         self.time_base = *time_base;
         for phrase in &mut self.phrases {
             phrase.set_time_base(time_base);
@@ -46,13 +54,13 @@ impl Sequence {
     }
 
     /// Read-only access to the currently played back phrase.
-    pub fn current_phrase(&self) -> &Phrase {
-        &self.phrases[self.phrase_index]
+    pub fn current_phrase(&self) -> Option<&Phrase> {
+        self.phrases.get(self.phrase_index)
     }
 
     /// Read-only access to the currently played back phrase.
-    pub fn current_phrase_mut(&mut self) -> &mut Phrase {
-        &mut self.phrases[self.phrase_index]
+    pub fn current_phrase_mut(&mut self) -> Option<&mut Phrase> {
+        self.phrases.get_mut(self.phrase_index)
     }
 
     /// Read-only access to all phrases.
@@ -86,25 +94,29 @@ impl Sequence {
             if next_phrase_start <= samples_to_run {
                 // run current phrase until it ends
                 let sample_position = self.sample_position;
-                self.current_phrase_mut()
+                self.phrases[self.phrase_index]
                     .consume_events_until_time(sample_position + next_phrase_start, consumer);
                 // select next phrase in the sequence
-                let previous_phrase = self.current_phrase_mut().clone();
+                let previous_phrase = self.phrases[self.phrase_index].clone();
                 self.phrase_index = (self.phrase_index + 1) % self.phrases().len();
                 self.sample_position_in_phrase = 0;
                 self.sample_position += next_phrase_start;
                 // reset the new phrase or apply continues modes
                 if self.phrases().len() > 1 {
                     let sample_offset = self.sample_position;
-                    self.current_phrase_mut()
+                    self.phrases[self.phrase_index]
                         .reset_with_offset(sample_offset, &previous_phrase);
                 }
             } else {
-                // keep running the current phrase
-                let sample_position = self.sample_position;
-                self.current_phrase_mut()
-                    .consume_events_until_time(sample_position + samples_to_run, consumer);
-                self.sample_position_in_phrase += samples_to_run;
+                // keep running the current phrase, if there is one...
+                if !self.phrases.is_empty() {
+                    let sample_time = self.sample_position + samples_to_run;
+                    self.phrases[self.phrase_index]
+                        .consume_events_until_time(sample_time, consumer);
+                    self.sample_position_in_phrase += samples_to_run;
+                } else {
+                    self.sample_position_in_phrase = 0;
+                }
                 self.sample_position += samples_to_run;
             }
         }
@@ -121,26 +133,28 @@ impl Sequence {
             if next_phrase_start <= samples_to_run {
                 // run current phrase until it ends
                 let sample_position = self.sample_position;
-                self.current_phrase_mut()
+                self.phrases[self.phrase_index]
                     .advance_until_time(sample_position + next_phrase_start);
                 // select next phrase in the sequence
-                let previous_phrase = self.current_phrase_mut().clone();
+                let previous_phrase = self.phrases[self.phrase_index].clone();
                 self.phrase_index = (self.phrase_index + 1) % self.phrases().len();
                 self.sample_position_in_phrase = 0;
                 self.sample_position += next_phrase_start;
                 // reset the new phrase or apply continues modes
                 if self.phrases().len() > 1 {
                     let sample_offset = self.sample_position;
-                    self.current_phrase_mut()
+                    self.phrases[self.phrase_index]
                         .reset_with_offset(sample_offset, &previous_phrase);
                 }
             } else {
-                // keep running the current phrase
-                let sample_position = self.sample_position;
-                self.current_phrase_mut()
-                    .advance_until_time(sample_position + samples_to_run);
-                self.sample_position_in_phrase += samples_to_run;
-                self.sample_position += samples_to_run;
+                // keep running the current phrase, if there is one...
+                if !self.phrases.is_empty() {
+                    let sample_time = self.sample_position + samples_to_run;
+                    self.phrases[self.phrase_index].advance_until_time(sample_time);
+                    self.sample_position_in_phrase += samples_to_run;
+                } else {
+                    self.sample_position_in_phrase = 0;
+                }
             }
         }
     }
@@ -159,10 +173,16 @@ impl Sequence {
     }
 
     fn samples_until_next_phrase(&self, time: u64) -> (u64, u64) {
-        let phrase_length_in_samples =
-            self.current_phrase().length().to_samples(&self.time_base) as SampleTime;
-        let next_phrase_start = phrase_length_in_samples - self.sample_position_in_phrase;
-        let samples_to_run = time - self.sample_position;
-        (next_phrase_start, samples_to_run)
+        if let Some(phrase) = self.current_phrase() {
+            let phrase_length_in_samples =
+                phrase.length().to_samples(&self.time_base) as SampleTime;
+            let next_phrase_start =
+                phrase_length_in_samples.saturating_sub(self.sample_position_in_phrase);
+            let samples_to_run = time - self.sample_position;
+            (next_phrase_start, samples_to_run)
+        } else {
+            let samples_to_run = time - self.sample_position;
+            (u64::MAX, samples_to_run)
+        }
     }
 }
