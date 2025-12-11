@@ -67,6 +67,11 @@ pub use crate::{
     },
 };
 
+/// Default [`Pattern`] impls.
+pub mod patterns {
+    pub use super::pattern::{beat_time::BeatTimePattern, second_time::SecondTimePattern};
+}
+
 /// Default [`Rhythm`] impls.
 pub mod rhythms {
     pub use super::rhythm::{empty::EmptyRhythm, fixed::FixedRhythm};
