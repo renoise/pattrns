@@ -43,7 +43,7 @@ phonic = { version = "^0.11", default-features = false, optional = true }
 # dev dependencies
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 pretty_assertions = { version = "^1.4" }
-notify = { version = "^8.0", default-features = false }
+notify = { version = "^8.0", default-features = false, features = ["macos_fsevent"] }
 ctrlc = { version = "^3.4" }
 criterion = { version = "^0.7", default-features = false }
 simplelog = { version = "^0.12", default-features = false, features = [
