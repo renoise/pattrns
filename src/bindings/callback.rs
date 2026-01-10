@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::{Debug, Display},
+    rc::Rc,
+};
 
 use mlua::prelude::*;
 
@@ -9,8 +14,41 @@ use crate::{BeatTimeBase, Event, Parameter, ParameterSet, RhythmEvent};
 
 // -------------------------------------------------------------------------------------------------
 
+/// Wraps a Lua runtime error and info about where it happens.
+#[derive(Debug, Clone)]
+pub struct CallbackError {
+    /// Source file or `[string = "XYZ"]` where the error happened.
+    pub source: Option<String>,
+    /// Source file's line where the error happened, or -1 when unknown.
+    pub source_line: Option<usize>,
+    /// Name of the function which was called when the error happened.
+    pub function: String,
+    /// The actual error.
+    pub error: LuaError,
+}
+
+/// Format Callback error to a Lua compiler alike error string.
+impl Display for CallbackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let source = self.source.clone().unwrap_or("unknown src".to_string());
+        let source_line = if let Some(line) = self.source_line {
+            line.to_string()
+        } else {
+            "".to_string()
+        };
+        let err = self.error.to_string();
+        if let Some(stripped_err) = err.strip_prefix("runtime error: ") {
+            f.write_fmt(format_args!(
+                "runtime error: {source}:{source_line}: {stripped_err}"
+            ))
+        } else {
+            f.write_fmt(format_args!("{source}:{source_line}: {err}"))
+        }
+    }
+}
+
 lazy_static! {
-    static ref LUA_CALLBACK_ERRORS: RwLock<Vec<LuaError>> = Vec::new().into();
+    static ref LUA_CALLBACK_ERRORS: RwLock<Vec<CallbackError>> = Vec::new().into();
 }
 
 /// Returns some error if there are any Lua callback errors, with the !first! error that happened.
@@ -18,7 +56,7 @@ lazy_static! {
 ///
 /// ### Panics
 /// Panics if accessing the global lua callback error vector fails.
-pub fn has_lua_callback_errors() -> Option<LuaError> {
+pub fn has_lua_callback_errors() -> Option<CallbackError> {
     LUA_CALLBACK_ERRORS
         .read()
         .expect("Failed to lock Lua callback error vector")
@@ -31,7 +69,7 @@ pub fn has_lua_callback_errors() -> Option<LuaError> {
 ///
 /// ### Panics
 /// Panics if accessing the global lua callback error vector failed.
-pub fn lua_callback_errors() -> Vec<LuaError> {
+pub fn lua_callback_errors() -> Vec<CallbackError> {
     LUA_CALLBACK_ERRORS
         .read()
         .expect("Failed to lock Lua callback error vector")
@@ -53,12 +91,22 @@ pub fn clear_lua_callback_errors() {
 ///
 /// ### Panics
 /// Panics if accessing the global lua callback error vector failed.
-pub fn add_lua_callback_error(name: &str, err: &LuaError) {
-    log::warn!("Lua callback '{}' failed to evaluate:\n{}", name, err);
+pub fn add_lua_callback_error(
+    source: Option<String>,
+    source_line: Option<usize>,
+    function: String,
+    error: LuaError,
+) {
+    // log::warn!("{source}:{source_line}: Lua callback '{name}' failed to evaluate:\n{err}");
     LUA_CALLBACK_ERRORS
         .write()
         .expect("Failed to lock Lua callback error vector")
-        .push(err.clone());
+        .push(CallbackError {
+            source,
+            source_line,
+            function,
+            error,
+        });
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -161,6 +209,16 @@ impl LuaCallback {
         } else {
             None
         }
+    }
+
+    /// Name of the source file for errors.
+    pub fn source(&self) -> Option<String> {
+        self.function.info().short_src
+    }
+
+    /// Line number in source where the function is defined for errors.
+    pub fn source_line(&self) -> Option<usize> {
+        self.function.info().line_defined.map(usize::from)
     }
 
     /// Name of the inner function for errors. Usually will be an anonymous function.
@@ -343,7 +401,7 @@ impl LuaCallback {
     /// Report a Lua callback errors. The error will be logged and usually cleared after
     /// the next callback call.
     pub fn handle_error(&self, err: &LuaError) {
-        add_lua_callback_error(&self.name(), err)
+        add_lua_callback_error(self.source(), self.source_line(), self.name(), err.clone())
     }
 
     /// Reset the callback function or iterator to its initial state.
