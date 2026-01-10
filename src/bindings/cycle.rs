@@ -15,11 +15,15 @@ pub struct CycleUserData {
 }
 
 impl CycleUserData {
-    pub fn from(arg: LuaString, seed: Option<u64>) -> LuaResult<Self> {
+    pub fn from(arg: LuaString, source: &str, seed: Option<u64>) -> LuaResult<Self> {
         let mut cycle = Cycle::from(&arg.to_string_lossy()).map_err(LuaError::runtime)?;
+        if !source.is_empty() {
+            cycle = cycle.with_source(source);
+        }
         if let Some(seed) = seed {
             cycle = cycle.with_seed(seed);
         }
+
         let mappings = Vec::new();
         let mapping_function = None;
         Ok(CycleUserData {
@@ -230,7 +234,7 @@ mod test {
         let mapped_cycle = evaluate_cycle_userdata(
             &lua,
             r#"
-                cycle("wurst a b c"):map(function(context, value) 
+                cycle("wurst a b c"):map(function(context, value)
                     assert(context.beats_per_min, 120)
                     assert(context.beats_per_bar, 4)
                     assert(context.samples_per_sec, 44100)
