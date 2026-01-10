@@ -26,6 +26,7 @@ pub struct Cycle {
     root: Step,
     event_limit: usize,
     input: String,
+    source: Option<String>,
     seed: Option<u64>,
     state: CycleState,
 }
@@ -55,10 +56,12 @@ impl Cycle {
                         rng: Xoshiro256PlusPlus::from_seed(rng().random()),
                     };
                     let seed = None;
+                    let source = None;
                     let event_limit = Self::EVENT_LIMIT_DEFAULT;
                     let cycle = Self {
                         input,
                         seed,
+                        source,
                         root,
                         state,
                         event_limit,
@@ -89,6 +92,18 @@ impl Cycle {
         }
     }
 
+    /// Rebuild/configure a newly created cycle with the given source hint.
+    pub fn with_source(self, source: &str) -> Self {
+        debug_assert!(
+            self.state.iteration == 0,
+            "Should not reconfigure seed of running cycle"
+        );
+        Self {
+            source: Some(source.to_string()),
+            ..self
+        }
+    }
+
     /// Rebuild/configure cycle to use the given custom event count limit.
     pub fn with_event_limit(self, event_limit: usize) -> Self {
         Self {
@@ -101,6 +116,12 @@ impl Cycle {
     pub fn is_stateful(&self) -> bool {
         // TODO improve: * and / can change the output, <1> does not etc..
         self.input.contains(['<', '{', '|', '?', '/', '*'])
+    }
+
+    /// When the cycle got created from a script source,
+    /// return source string indentifier (maybe a path), else None.
+    pub fn source(&self) -> &Option<String> {
+        &self.source
     }
 
     /// Query for the next iteration of output.

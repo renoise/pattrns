@@ -44,7 +44,8 @@ mod unwrap;
 
 // public re-exports
 pub use callback::{
-    add_lua_callback_error, clear_lua_callback_errors, has_lua_callback_errors, lua_callback_errors,
+    add_lua_callback_error, clear_lua_callback_errors, has_lua_callback_errors,
+    lua_callback_errors, CallbackError,
 };
 
 // internal re-exports
@@ -57,6 +58,8 @@ pub(crate) use unwrap::{gate_trigger_from_value, note_events_from_value, pulse_f
 /// Global shared Lua data, unique in every new Lua instance.
 #[derive(Debug, Clone)]
 pub(crate) struct LuaAppData {
+    /// File name of the source that this app data is created for.
+    pub(crate) source: String,
     /// Global random seed, set by math.randomseed() for each Lua instance and passed to
     /// newly created pattern impls.
     pub(crate) rand_seed: Option<u64>,
@@ -68,10 +71,12 @@ pub(crate) struct LuaAppData {
 
 impl LuaAppData {
     fn new() -> Self {
+        let source = String::new();
         let rand_seed = None;
         let rand_rgn = Xoshiro256PlusPlus::from_seed(rand::rng().random());
         let declared_globals = HashSet::new();
         Self {
+            source,
             rand_seed,
             rand_rgn,
             declared_globals,
@@ -118,6 +123,13 @@ pub fn new_pattern_from_file<P: AsRef<Path>>(
     register_bindings(&mut lua, &timeout_hook, &time_base)?;
     // restart the timeout hook
     timeout_hook.reset();
+    // memorize source origin in app_data
+    {
+        let mut app_data = lua
+            .app_data_mut::<LuaAppData>()
+            .expect("Failed to access Lua app data");
+        app_data.source = file_path.as_ref().to_string_lossy().to_string();
+    }
     // compile and evaluate script
     let chunk = lua.load(file_path.as_ref());
     let result = chunk.eval::<LuaValue>()?;
@@ -141,6 +153,13 @@ pub fn new_pattern_from_string(
     register_bindings(&mut lua, &timeout_hook, &time_base)?;
     // restart the timeout hook
     timeout_hook.reset();
+    // memorize source origin in app_data
+    {
+        let mut app_data = lua
+            .app_data_mut::<LuaAppData>()
+            .expect("Failed to access Lua app data");
+        app_data.source = format!("[string \"{}\"]", script_name);
+    }
     // compile and evaluate script
     let chunk = lua.load(script).set_name(script_name);
     let result = chunk.eval::<LuaValue>()?;
@@ -277,14 +296,15 @@ fn register_global_bindings(
     // function cycle(input)
     globals.raw_set(
         "cycle",
-        lua.create_function(|lua, arg: LuaString| -> LuaResult<CycleUserData> {
+        lua.create_function(|lua, cycle: LuaString| -> LuaResult<CycleUserData> {
             // NB: don't keep borrowing app_data_ref here
-            let rand_seed = {
-                lua.app_data_ref::<LuaAppData>()
-                    .expect("Failed to access Lua app data")
-                    .rand_seed
+            let (source, rand_seed) = {
+                let app_data = lua
+                    .app_data_ref::<LuaAppData>()
+                    .expect("Failed to access Lua app data");
+                (app_data.source.clone(), app_data.rand_seed)
             };
-            CycleUserData::from(arg, rand_seed)
+            CycleUserData::from(cycle, &source, rand_seed)
         })?,
     )?;
 
@@ -851,7 +871,7 @@ mod test {
             .load(
                 r#"
                 local i = 0
-                while true do 
+                while true do
                     i = i + 1
                 end
                 "#,
@@ -864,7 +884,7 @@ mod test {
             .load(
                 r#"
                 local i = 0
-                while i < 100 do 
+                while i < 100 do
                     i = i + 1
                 end
                 "#,
