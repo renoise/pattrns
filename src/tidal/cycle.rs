@@ -285,6 +285,8 @@ enum Step {
     Stack(Stack),
     Choices(Choices),
     SpeedExpression(SpeedExpression),
+    ReplicateExpression(ReplicateExpression),
+    WeightExpression(WeightExpression),
     TargetExpression(TargetExpression),
     Degrade(Degrade),
     Bjorklund(Bjorklund),
@@ -302,6 +304,8 @@ impl Step {
             Step::Choices(cs) => cs.choices.iter().collect(),
             Step::Stack(st) => st.stack.iter().collect(),
             Step::SpeedExpression(e) => vec![&e.left, &e.right],
+            Step::WeightExpression(e) => vec![&e.left],
+            Step::ReplicateExpression(e) => vec![&e.left],
             Step::Degrade(e) => vec![&e.step],
             Step::TargetExpression(e) => vec![&e.left, &e.right],
             Step::Bjorklund(b) => {
@@ -313,7 +317,6 @@ impl Step {
             }
             Step::Static(s) => match s {
                 Static::Repeat => vec![],
-                Static::Expression(e) => vec![&e.left],
                 Static::Range(_) => vec![],
             },
         }
@@ -325,6 +328,8 @@ impl Step {
             Step::Alternating(a) => a.steps.iter_mut().collect(),
             Step::Subdivision(sd) => sd.steps.iter_mut().collect(),
             Step::SpeedExpression(e) => vec![&mut e.left],
+            Step::WeightExpression(e) => vec![&mut e.left],
+            Step::ReplicateExpression(e) => vec![&mut e.left],
             Step::Choices(cs) => cs.choices.iter_mut().collect(),
             Step::Polymeter(pm) => pm.steps.as_mut().inner_steps_mut(),
             Step::Stack(st) => st.stack.iter_mut().collect(),
@@ -334,7 +339,6 @@ impl Step {
             Step::Static(s) => match s {
                 Static::Repeat => vec![],
                 Static::Range(_) => vec![],
-                Static::Expression(_) => vec![],
             },
         }
     }
@@ -349,6 +353,13 @@ impl Step {
                 .inner_steps_mut()
                 .iter_mut()
                 .for_each(|s| s.mutate_singles(fun)),
+        }
+    }
+
+    fn length(&self) -> Fraction {
+        match self {
+            Step::ReplicateExpression(re) => re.count.to_fraction().unwrap_or(Fraction::ONE),
+            _ => Fraction::ONE,
         }
     }
 
@@ -371,7 +382,6 @@ impl Step {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Static {
-    Expression(StaticExpression),
     Range(Range),
     Repeat,
 }
@@ -408,12 +418,17 @@ struct Polymeter {
 }
 
 impl Polymeter {
-    fn length(&self) -> usize {
+    fn length(&self) -> Fraction {
         if let Step::Subdivision(s) = self.steps.as_ref() {
-            s.steps.len()
+            let l = s
+                .steps
+                .iter()
+                .fold(Fraction::ZERO, |a: Fraction, v: &Step| a + v.length());
+            l
         } else {
-            1
-        } // unreachable
+            // unreachable
+            Fraction::ONE
+        }
     }
 }
 
@@ -434,15 +449,10 @@ enum SpeedOp {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum StaticOp {
+enum Operator {
+    Speed(SpeedOp),
     Replicate(), // !
     Weight(),    // @
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum Operator {
-    Static(StaticOp),
-    Speed(SpeedOp),
     Target(),    // :
     Bjorklund(), // (p,s,r)
     Degrade(),   // ?
@@ -452,8 +462,8 @@ impl Operator {
     fn parse(pair: Pair<Rule>) -> Result<Self, String> {
         match pair.as_rule() {
             Rule::op_degrade => Ok(Self::Degrade()),
-            Rule::op_replicate => Ok(Self::Static(StaticOp::Replicate())),
-            Rule::op_weight => Ok(Self::Static(StaticOp::Weight())),
+            Rule::op_replicate => Ok(Self::Replicate()),
+            Rule::op_weight => Ok(Self::Weight()),
             Rule::op_fast => Ok(Self::Speed(SpeedOp::Fast())),
             Rule::op_slow => Ok(Self::Speed(SpeedOp::Slow())),
             Rule::op_target => Ok(Self::Target()),
@@ -471,10 +481,15 @@ struct SpeedExpression {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct StaticExpression {
-    op: StaticOp,
+struct WeightExpression {
     left: Box<Step>,
-    right: Value,
+    weight: Value,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ReplicateExpression {
+    left: Box<Step>,
+    count: Value,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -677,6 +692,10 @@ impl Value {
             },
             Value::Name(_n) => None,
         }
+    }
+
+    fn to_fraction(&self) -> Option<Fraction> {
+        self.to_float().and_then(Fraction::from_f64)
     }
 }
 
@@ -890,6 +909,22 @@ impl Events {
             Events::Single(s) => s.length,
             Events::Multi(m) => m.length,
             Events::Poly(p) => p.length,
+        }
+    }
+
+    fn set_length(&mut self, length: Fraction) {
+        match self {
+            Events::Single(s) => s.length = length,
+            Events::Multi(m) => m.length = length,
+            Events::Poly(p) => p.length = length,
+        }
+    }
+
+    fn first(&self) -> Option<Event> {
+        match self {
+            Events::Single(s) => Some(s.clone()),
+            Events::Multi(m) => m.events.first().and_then(Self::first),
+            Events::Poly(p) => p.channels.first().and_then(Self::first),
         }
     }
 
@@ -1292,31 +1327,6 @@ impl CycleParser {
                     let repeat = steps.last().cloned().unwrap_or(Step::rest());
                     steps.push(repeat)
                 }
-                Static::Expression(e) => match e.op {
-                    StaticOp::Replicate() => {
-                        steps.push(e.left.as_ref().clone());
-                        if let Some(repeats) = e.right.to_integer() {
-                            if repeats > 0 {
-                                for _i in 1..repeats {
-                                    steps.push(e.left.as_ref().clone())
-                                }
-                            }
-                        }
-                    }
-                    StaticOp::Weight() => {
-                        steps.push(e.left.as_ref().clone());
-                        if let Some(repeats) = e.right.to_integer() {
-                            if repeats > 0 {
-                                for _i in 1..repeats {
-                                    steps.push(Step::Single(Single {
-                                        value: Value::Hold,
-                                        string: Rc::from("_"),
-                                    }))
-                                }
-                            }
-                        }
-                    }
-                },
                 Static::Range(r) => {
                     let range = if r.start <= r.end {
                         Box::new(r.start..=r.end) as Box<dyn Iterator<Item = i32>>
@@ -1562,22 +1572,33 @@ impl CycleParser {
         String::from("unreachable: missing right hand side from op_pair, error in grammar!")
     }
 
-    fn static_expression(left: Step, op: StaticOp, op_pair: Pair<Rule>) -> Result<Step, String> {
-        let right = if let Some(right_pair) = op_pair.into_inner().next() {
-            right_pair
-                .into_inner()
-                .next()
-                .ok_or_else(Self::invalid_right_hand)
-                .and_then(Self::value)?
+    // TODO allow for a pattern on the right for weight and replicate
+    // with the current pest setup, this seems impossible if we want to support optional parameter here
+    // at least it is impossible without major rearrangement of the grammar and parsing
+    fn weight_expression(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
+        let weight = if let Some(pair) = op_pair.into_inner().next() {
+            Self::value(pair)?
         } else {
-            Value::Integer(2)
+            Value::Float(2.0)
         };
 
-        Ok(Step::Static(Static::Expression(StaticExpression {
+        Ok(Step::WeightExpression(WeightExpression {
             left: Box::new(left),
-            right,
-            op,
-        })))
+            weight,
+        }))
+    }
+
+    fn replicate_expression(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
+        let count = if let Some(pair) = op_pair.into_inner().next() {
+            Self::value(pair)?
+        } else {
+            Value::Float(2.0)
+        };
+
+        Ok(Step::ReplicateExpression(ReplicateExpression {
+            left: Box::new(left),
+            count,
+        }))
     }
 
     fn degrade_expression(step: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
@@ -1633,7 +1654,8 @@ impl CycleParser {
         // Loop over operators and parameters, creating a nested expression if multiple pairs are present
         for op_pair in inner {
             left = match Operator::parse(op_pair.clone())? {
-                Operator::Static(op) => Self::static_expression(left, op, op_pair)?,
+                Operator::Replicate() => Self::replicate_expression(left, op_pair)?,
+                Operator::Weight() => Self::weight_expression(left, op_pair)?,
                 Operator::Speed(op) => Self::speed_expression(left, op, op_pair)?,
                 Operator::Target() => Self::target_expression(left, op_pair)?,
                 Operator::Degrade() => Self::degrade_expression(left, op_pair)?,
@@ -1733,33 +1755,25 @@ impl Cycle {
     // helper to calculate the right multiplier for polymeter and speed expressions
     fn step_multiplier(step: &Step, value: &Value) -> Fraction {
         match step {
-            Step::Polymeter(pm) => {
-                let length = pm.length() as f64;
-                let count = value.to_float().unwrap_or(0.0);
-                Fraction::from_f64(count).unwrap_or(Fraction::ZERO)
-                    / Fraction::from_f64(length).unwrap_or(Fraction::ONE)
-            }
+            Step::Polymeter(pm) => value.to_fraction().unwrap_or(Fraction::ZERO) / pm.length(),
             Step::SpeedExpression(e) => match e.op {
-                SpeedOp::Fast() => {
-                    if let Some(right) = value.to_float() {
-                        Fraction::from_f64(right).unwrap_or(Fraction::ZERO)
-                    } else {
-                        Fraction::ZERO
-                    }
-                }
-                SpeedOp::Slow() => {
-                    if let Some(right) = value.to_float() {
-                        if right != 0.0 {
-                            Fraction::from_f64(1.0 / right).unwrap_or(Fraction::ZERO)
+                SpeedOp::Fast() => value.to_fraction().unwrap_or(Fraction::ZERO),
+                SpeedOp::Slow() => value
+                    .to_float()
+                    .and_then(|div| {
+                        if div != 0.0 {
+                            Fraction::from_f64(1.0 / div)
                         } else {
-                            Fraction::ZERO
+                            None
                         }
-                    } else {
-                        Fraction::from(0)
-                    }
-                }
+                    })
+                    .unwrap_or(Fraction::ZERO),
             },
             _ => Fraction::from(1),
+            // _ => value
+            //     .to_float()
+            //     .and_then(Fraction::from_f64)
+            //     .unwrap_or(Fraction::ONE),
         }
     }
 
@@ -1968,6 +1982,42 @@ impl Cycle {
                     })
                 }
             }
+            Step::WeightExpression(we) => {
+                // TODO if the right side could be a step like alternating, we could evaluate like so
+                // let right_events = Self::output(we.weight.as_ref(), state, cycle, limit, overlap)?;
+                // let weight = right_events
+                //     .first()
+                //     .and_then(|e| e.value.to_fraction())
+                //     .unwrap_or(Fraction::ONE);
+
+                let mut events = Self::output(we.left.as_ref(), state, cycle, limit, overlap)?;
+                let weight = we.weight.to_fraction().unwrap_or(Fraction::ONE);
+                events.set_length(weight);
+                events
+            }
+            Step::ReplicateExpression(we) => {
+                let count = we.count.to_float().unwrap_or(2.0);
+                let ceil = count.ceil();
+                let len = if ceil == 0.0 { 1 } else { ceil as usize };
+                let mult = count / ceil;
+
+                let steps = vec![we.left.as_ref().clone(); len];
+                let sub = Step::subdivision(steps);
+
+                // TODO cache this if the right side is static
+                let step = Step::SpeedExpression(SpeedExpression {
+                    op: SpeedOp::Fast(),
+                    left: Box::from(sub),
+                    right: Box::from(Step::Single(Single {
+                        value: Value::Float(mult),
+                        string: Rc::from(""),
+                    })),
+                });
+
+                let mut events = Self::output(&step, state, cycle, limit, overlap)?;
+                events.set_length(Fraction::from_f64(count).unwrap_or(Fraction::ONE));
+                events
+            }
             Step::Alternating(a) => {
                 if a.steps.is_empty() {
                     Events::empty()
@@ -2111,13 +2161,12 @@ impl Cycle {
             Step::Choices(cs) => format!("Choices |{}|", cs.choices.len()),
             Step::Stack(st) => format!("Stack ({})", st.stack.len()),
             Step::SpeedExpression(e) => format!("Speed Expression {:?}", e.op),
+            Step::WeightExpression(we) => format!("Weight Expression {:?}", we.weight),
+            Step::ReplicateExpression(we) => format!("Replicate Expression {:?}", we.count),
             Step::TargetExpression(_e) => String::from("Target Expression"),
             Step::Static(s) => match s {
                 Static::Repeat => "Repeat".to_string(),
                 Static::Range(r) => format!("Range {}..{}", r.start, r.end),
-                Static::Expression(e) => {
-                    format!("Static Expression {:?} : {:?}", e.op, e.right)
-                }
             },
             Step::Degrade(d) => format!("Degrade ? {:?}", d.chance),
             Step::Bjorklund(_b) => format!("Bjorklund {}", ""),

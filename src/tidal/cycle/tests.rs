@@ -45,6 +45,13 @@ fn span() -> Result<(), String> {
 }
 
 #[test]
+fn weight_and_replicate() -> Result<(), String> {
+    let mut cycle = Cycle::from("a!1.5 b")?;
+    let events = cycle.generate()?;
+    Ok(())
+}
+
+#[test]
 fn parse() -> Result<(), String> {
     assert!(Cycle::from("a b c [d").is_err());
     assert!(Cycle::from("a b/ c [d").is_err());
