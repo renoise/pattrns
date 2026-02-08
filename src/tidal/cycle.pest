@@ -59,9 +59,9 @@ parameter        = _{ single | group }
 single_parameter = _{ single }
 
 /// static operators
-op_replicate = ${ "!" ~ number }
-op_weight    = ${ "@" ~ number? }
-op_degrade   = ${ "?" ~ number? }
+op_replicate = ${ "!" ~ single_parameter }
+op_weight    = ${ "@" ~ single_parameter? }
+op_degrade   = ${ "?" ~ single_parameter? }
 
 /// dynamic operators
 op_fast      = { "*" ~ parameter }

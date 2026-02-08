@@ -1231,7 +1231,7 @@ impl CycleParser {
     /// recursively parse a pair as a Step
     fn step(pair: Pair<Rule>) -> Result<Step, String> {
         match pair.as_rule() {
-            Rule::single => Self::single(pair),
+            Rule::single => Ok(Step::Single(Self::single(pair)?)),
             Rule::repeat => Ok(Step::Static(Static::Repeat)),
             Rule::subdivision | Rule::mini => Self::group(pair, Step::subdivision),
             Rule::alternating => Self::group(pair, Step::alternating),
@@ -1306,16 +1306,16 @@ impl CycleParser {
         }
     }
 
-    fn single(pair: Pair<Rule>) -> Result<Step, String> {
+    fn single(pair: Pair<Rule>) -> Result<Single, String> {
         pair.clone()
             .into_inner()
             .next()
             .ok_or_else(|| format!("empty single {}", pair))
             .and_then(|value_pair| {
-                Ok(Step::Single(Single {
+                Ok(Single {
                     string: Rc::from(value_pair.as_str()),
                     value: Self::value(value_pair)?,
-                }))
+                })
             })
     }
 
@@ -1577,7 +1577,7 @@ impl CycleParser {
     // at least it is impossible without major rearrangement of the grammar and parsing
     fn weight_expression(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
         let weight = if let Some(pair) = op_pair.into_inner().next() {
-            Self::value(pair)?
+            Self::single(pair)?.value
         } else {
             Value::Float(2.0)
         };
@@ -1590,7 +1590,7 @@ impl CycleParser {
 
     fn replicate_expression(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
         let count = if let Some(pair) = op_pair.into_inner().next() {
-            Self::value(pair)?
+            Self::single(pair)?.value
         } else {
             Value::Float(2.0)
         };
@@ -1607,7 +1607,8 @@ impl CycleParser {
                 .into_inner()
                 .next()
                 .ok_or_else(Self::invalid_right_hand)
-                .and_then(Self::value)?
+                .and_then(Self::single)?
+                .value
         } else {
             Value::Float(0.5)
         };
