@@ -47,7 +47,7 @@ fn span() -> Result<(), String> {
 #[test]
 fn weight_and_replicate() -> Result<(), String> {
     let mut cycle = Cycle::from("a!1.5 b")?;
-    let events = cycle.generate()?;
+    let _events = cycle.generate()?;
     Ok(())
 }
 
@@ -61,6 +61,37 @@ fn variables() -> Result<(), String> {
     // unset variables convert into named
     let mut cycle = Cycle::from("a b $note d")?;
     assert_eq!(cycle.generate(), Cycle::from("a b note d")?.generate());
+
+    let index = Constant::Integer(12);
+    let mut cycle = Cycle::from("a:$index")?;
+    cycle.set_var("index", index);
+    assert_eq!(cycle.generate(), Cycle::from("a:12")?.generate());
+
+    let float = Constant::Float(0.9);
+    let mut cycle = Cycle::from("a:p$float")?;
+    cycle.set_var("float", float);
+    assert_eq!(cycle.generate(), Cycle::from("a:p0.9")?.generate());
+
+    let f1 = Constant::Float(0.5);
+    let f2 = Constant::Float(0.9);
+    let mut cycle = Cycle::from("[a b c d]:p=[$f1 $f2]")?;
+    cycle.set_var("f1", f1);
+    cycle.set_var("f2", f2);
+    assert_eq!(
+        cycle.generate(),
+        Cycle::from("[a b c d]:p=[0.5 0.9]")?.generate()
+    );
+
+    let mult = Constant::Float(2.0);
+    let mut cycle = Cycle::from("a*$mult")?;
+    cycle.set_var("mult", mult);
+    assert_eq!(cycle.generate(), Cycle::from("a*2")?.generate());
+
+    let length = Constant::Float(3.0);
+    let mut cycle = Cycle::from("a@$length b")?;
+    cycle.set_var("length", length);
+    assert_eq!(cycle.generate(), Cycle::from("a@3 b")?.generate());
+
     Ok(())
 }
 

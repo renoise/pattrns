@@ -424,6 +424,7 @@ enum Static {
 enum Value {
     Constant(Constant),
     Variable(Rc<str>),
+    VariableTarget(Rc<str>, Target),
 }
 
 impl Default for Value {
@@ -436,39 +437,55 @@ impl Value {
     fn to_float(&self, vars: Option<&Vars>) -> Option<f64> {
         match self {
             Self::Constant(l) => l.to_float(),
-            Self::Variable(_) => self.to_literal(vars).to_float(),
+            Self::Variable(_) | Self::VariableTarget(_, _) => self.to_constant(vars).to_float(),
         }
     }
     fn to_integer(&self, vars: Option<&Vars>) -> Option<i32> {
         match self {
             Self::Constant(l) => l.to_integer(),
-            Self::Variable(_) => self.to_literal(vars).to_integer(),
+            Self::Variable(_) | Self::VariableTarget(_, _) => self.to_constant(vars).to_integer(),
         }
     }
     fn to_chance(&self, vars: Option<&Vars>) -> Option<f64> {
         match self {
             Self::Constant(l) => l.to_chance(),
-            Self::Variable(_) => self.to_literal(vars).to_chance(),
+            Self::Variable(_) | Self::VariableTarget(_, _) => self.to_constant(vars).to_chance(),
         }
     }
     fn to_fraction(&self, vars: Option<&Vars>) -> Option<Fraction> {
         match self {
             Self::Constant(l) => l.to_fraction(),
-            Self::Variable(_) => self.to_literal(vars).to_fraction(),
+            Self::Variable(_) | Self::VariableTarget(_, _) => self.to_constant(vars).to_fraction(),
         }
     }
     fn to_target(&self, string: &Rc<str>, vars: Option<&Vars>) -> Option<Target> {
         match self {
             Self::Constant(l) => l.to_target(string),
-            Self::Variable(_) => self.to_literal(vars).to_target(string),
+            Self::Variable(_) | Self::VariableTarget(_, _) => {
+                self.to_constant(vars).to_target(string)
+            }
         }
     }
-    fn to_literal(&self, vars: Option<&Vars>) -> Constant {
+    fn resolve_var(var: Rc<str>, vars: Option<&Vars>) -> Constant {
+        vars.and_then(|vars| vars.get(&var).cloned())
+            .unwrap_or(Constant::Name(Rc::clone(&var)))
+    }
+    fn to_constant(&self, vars: Option<&Vars>) -> Constant {
         match self {
             Self::Constant(l) => l.clone(),
-            Self::Variable(rc) => vars
-                .and_then(|vars| vars.get(rc).cloned())
-                .unwrap_or(Constant::Name(Rc::clone(rc))),
+            Self::Variable(rc) => Self::resolve_var(Rc::clone(rc), vars),
+            Self::VariableTarget(rc, target) => {
+                let constant = Self::resolve_var(Rc::clone(rc), vars);
+                match target {
+                    Target::Index(_) => constant
+                        .to_integer()
+                        .map(|i| Constant::Target(Target::Index(i)))
+                        .unwrap_or(constant),
+                    Target::Named(n, _) => {
+                        Constant::Target(Target::Named(Rc::clone(n), constant.to_float()))
+                    }
+                }
+            }
         }
     }
 }
@@ -1325,71 +1342,94 @@ impl CycleParser {
         }
     }
 
+    fn variable_identifier(pair: Pair<Rule>) -> Result<Rc<str>, String> {
+        pair.into_inner()
+            .next()
+            .ok_or("error in grammar, missing variable name".to_string())
+            .map(|name_pair| Rc::from(name_pair.as_str()))
+    }
+
+    fn variable(pair: Pair<Rule>) -> Result<Value, String> {
+        Self::variable_identifier(pair).map(Value::Variable)
+    }
+
     /// parse a pair inside a single as a value
     fn value(pair: Pair<Rule>) -> Result<Value, String> {
-        if pair.as_rule() == Rule::variable {
-            pair.into_inner()
-                .next()
-                .ok_or("error in grammar, missing variable name".to_string())
-                .map(|name_pair| Value::Variable(Rc::from(name_pair.as_str())))
-        } else {
-            let constant = match pair.as_rule() {
-                Rule::integer => Constant::from_integer(pair.as_str()),
-                Rule::float => Constant::from_float(pair.as_str()),
-                Rule::number => {
-                    if let Some(n) = pair.into_inner().next() {
-                        match n.as_rule() {
-                            Rule::integer => Constant::from_integer(n.as_str()),
-                            Rule::float => Constant::from_float(n.as_str()),
-                            _ => Err(format!("unrecognized number\n{:?}", n)),
-                        }
-                    } else {
-                        Err("empty single".to_string())
-                    }
-                }
-                Rule::hold => Ok(Constant::Hold),
-                Rule::rest => Ok(Constant::Rest),
-                Rule::pitch => Ok(Constant::Pitch(Pitch::parse(pair))),
-                Rule::chord => {
-                    let mut pitch = Pitch { note: 0, octave: 4 };
-                    let mut mode = "";
-                    for p in pair.into_inner() {
-                        match p.as_rule() {
-                            Rule::pitch => {
-                                pitch = Pitch::parse(p);
-                            }
-                            Rule::mode => {
-                                mode = p.as_str();
-                            }
-                            _ => (),
-                        }
-                    }
-                    Ok(Constant::Chord(pitch, Rc::from(mode)))
-                }
-                Rule::target => {
-                    let name = pair.as_str().get(0..1).ok_or(format!(
-                        "error in grammar, missing target key in pair\n{:?}",
-                        pair
-                    ))?;
-                    let value = pair.clone().into_inner().next().ok_or(format!(
-                        "error in grammar, missing target value in pair\n{:?}",
-                        pair
-                    ))?;
+        match pair.as_rule() {
+            Rule::variable => Self::variable(pair),
+            Rule::target => {
+                let name = pair.as_str().get(0..1).ok_or(format!(
+                    "error in grammar, missing target key in pair\n{:?}",
+                    pair
+                ))?;
+                let value = pair.clone().into_inner().next().ok_or(format!(
+                    "error in grammar, missing target value in pair\n{:?}",
+                    pair
+                ))?;
 
-                    match name.as_bytes() {
-                        b"#" => Ok(Constant::Target(Target::Index(Constant::parse_integer(
-                            value.as_str(),
-                        )?))),
-                        _ => Ok(Constant::Target(Target::Named(
+                match name.as_bytes() {
+                    b"#" => match value.as_rule() {
+                        Rule::integer => Ok(Value::Constant(Constant::Target(Target::Index(
+                            Constant::parse_integer(value.as_str())?,
+                        )))),
+                        Rule::variable => Ok(Value::VariableTarget(
+                            Self::variable_identifier(value)?,
+                            Target::Index(0),
+                        )),
+                        _ => Err("error in grammar, unexpected rule for target index".to_string()),
+                    },
+                    _ => match value.as_rule() {
+                        Rule::float => Ok(Value::Constant(Constant::Target(Target::Named(
                             Rc::from(name),
                             Some(Constant::parse_float(value.as_str())?),
-                        ))),
-                    }
+                        )))),
+                        Rule::variable => Ok(Value::VariableTarget(
+                            Self::variable_identifier(value)?,
+                            Target::Named(Rc::from(name), None),
+                        )),
+                        _ => Err("error in grammar, unexpected rule for target float".to_string()),
+                    },
                 }
-                Rule::name => Ok(Constant::Name(Rc::from(pair.as_str()))),
-                _ => Err(format!("unrecognized target value\n{:?}", pair)),
-            }?;
-            Ok(Value::Constant(constant))
+            }
+            _ => {
+                let constant = match pair.as_rule() {
+                    Rule::integer => Constant::from_integer(pair.as_str()),
+                    Rule::float => Constant::from_float(pair.as_str()),
+                    Rule::number => {
+                        if let Some(n) = pair.into_inner().next() {
+                            match n.as_rule() {
+                                Rule::integer => Constant::from_integer(n.as_str()),
+                                Rule::float => Constant::from_float(n.as_str()),
+                                _ => Err(format!("unrecognized number\n{:?}", n)),
+                            }
+                        } else {
+                            Err("empty single".to_string())
+                        }
+                    }
+                    Rule::hold => Ok(Constant::Hold),
+                    Rule::rest => Ok(Constant::Rest),
+                    Rule::pitch => Ok(Constant::Pitch(Pitch::parse(pair))),
+                    Rule::chord => {
+                        let mut pitch = Pitch { note: 0, octave: 4 };
+                        let mut mode = "";
+                        for p in pair.into_inner() {
+                            match p.as_rule() {
+                                Rule::pitch => {
+                                    pitch = Pitch::parse(p);
+                                }
+                                Rule::mode => {
+                                    mode = p.as_str();
+                                }
+                                _ => (),
+                            }
+                        }
+                        Ok(Constant::Chord(pitch, Rc::from(mode)))
+                    }
+                    Rule::name => Ok(Constant::Name(Rc::from(pair.as_str()))),
+                    _ => Err(format!("unrecognized target value\n{:?}", pair)),
+                }?;
+                Ok(Value::Constant(constant))
+            }
         }
     }
 
@@ -1764,7 +1804,6 @@ impl CycleParser {
         let mut pattern = Self::step(p)?;
         let mut key = k.into_inner();
         if let Some(name) = key.next() {
-            // FIX parse variables for targets
             pattern.mutate_singles(&mut |single: &mut Single| {
                 if let Some(f) = single.value.to_float(None) {
                     if !matches!(single.value, Value::Constant(Constant::Target(_))) {
@@ -1773,6 +1812,11 @@ impl CycleParser {
                             Some(f),
                         )));
                     }
+                } else if let Value::Variable(rc) = &single.value {
+                    single.value = Value::VariableTarget(
+                        Rc::clone(rc),
+                        Target::Named(Rc::from(name.as_str()), None),
+                    )
                 }
             });
         } else {
@@ -1781,6 +1825,8 @@ impl CycleParser {
                     if !matches!(single.value, Value::Constant(Constant::Target(_))) {
                         single.value = Value::Constant(Constant::Target(Target::Index(i)));
                     }
+                } else if let Value::Variable(rc) = &single.value {
+                    single.value = Value::VariableTarget(Rc::clone(rc), Target::Index(0))
                 }
             });
         }
@@ -1995,7 +2041,7 @@ impl Cycle {
             // multiply with single values to avoid generating events
             Step::Single(single) => {
                 // apply multiplier
-                let multiplier = Self::step_multiplier(step, &single.value.to_literal(vars), vars);
+                let multiplier = Self::step_multiplier(step, &single.value.to_constant(vars), vars);
                 Ok(Self::output_multiplied(
                     left, state, cycle, multiplier, limit, overlap, vars,
                 )?)
@@ -2058,7 +2104,7 @@ impl Cycle {
                     length: Fraction::ONE,
                     span: Span::default(),
                     string: Rc::clone(&s.string),
-                    value: s.value.to_literal(vars),
+                    value: s.value.to_constant(vars),
                     targets: vec![],
                 })
             }
