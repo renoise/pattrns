@@ -52,6 +52,19 @@ fn weight_and_replicate() -> Result<(), String> {
 }
 
 #[test]
+fn variables() -> Result<(), String> {
+    let note = Constant::Pitch(Pitch { note: 0, octave: 4 });
+    let mut cycle = Cycle::from("a b $note d")?;
+    cycle.set_var("note", note);
+    assert_eq!(cycle.generate(), Cycle::from("a b c d")?.generate());
+
+    // unset variables convert into named
+    let mut cycle = Cycle::from("a b $note d")?;
+    assert_eq!(cycle.generate(), Cycle::from("a b note d")?.generate());
+    Ok(())
+}
+
+#[test]
 fn parse() -> Result<(), String> {
     assert!(Cycle::from("a b c [d").is_err());
     assert!(Cycle::from("a b/ c [d").is_err());

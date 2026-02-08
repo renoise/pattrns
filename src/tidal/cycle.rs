@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 #[cfg(test)]
 use std::fmt::Display;
@@ -20,6 +20,8 @@ const OVERFLOW_ERROR: &str = "Internal error: integer overflow in cycle";
 
 // -------------------------------------------------------------------------------------------------
 
+type Vars = HashMap<Rc<str>, Constant>;
+
 /// Tidal cycle mini notation parser and event generator.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cycle {
@@ -29,6 +31,7 @@ pub struct Cycle {
     source: Option<String>,
     seed: Option<u64>,
     state: CycleState,
+    vars: Option<Vars>,
 }
 
 impl Cycle {
@@ -58,6 +61,7 @@ impl Cycle {
                     let seed = None;
                     let source = None;
                     let event_limit = Self::EVENT_LIMIT_DEFAULT;
+                    let vars = None;
                     let cycle = Self {
                         input,
                         seed,
@@ -65,6 +69,7 @@ impl Cycle {
                         root,
                         state,
                         event_limit,
+                        vars,
                     };
                     #[cfg(test)]
                     {
@@ -112,6 +117,28 @@ impl Cycle {
         }
     }
 
+    /// Rebuild/configure cycle to use an table to map variables from
+    pub fn with_vars(self, vars: Vars) -> Self {
+        Self {
+            vars: Some(vars),
+            ..self
+        }
+    }
+
+    pub fn update_vars(&mut self, vars: Vars) {
+        self.vars = Some(vars)
+    }
+
+    pub fn set_var(&mut self, name: &str, constant: Constant) {
+        if let Some(vars) = self.vars.as_mut() {
+            vars.insert(name.into(), constant);
+        } else {
+            let mut vars = HashMap::new();
+            vars.insert(name.into(), constant);
+            self.vars = Some(vars);
+        }
+    }
+
     /// Check if a cycle may give different outputs between cycles.
     pub fn is_stateful(&self) -> bool {
         // TODO improve: * and / can change the output, <1> does not etc..
@@ -133,7 +160,14 @@ impl Cycle {
         if let Some(seed) = self.seed {
             self.state.rng = Xoshiro256PlusPlus::seed_from_u64(seed.wrapping_add(cycle as u64));
         }
-        let mut events = Self::output(&self.root, &mut self.state, cycle, self.event_limit, false)?;
+        let mut events = Self::output(
+            &self.root,
+            &mut self.state,
+            cycle,
+            self.event_limit,
+            false,
+            self.vars.as_ref(),
+        )?;
         self.state.iteration += 1;
         events.transform_spans(&Span::default());
         Ok(events.export())
@@ -156,7 +190,7 @@ impl Cycle {
 pub struct Event {
     length: Fraction,
     span: Span,
-    value: Value,
+    value: Constant,
     string: Rc<str>,
     targets: Vec<Target>,
 }
@@ -166,7 +200,7 @@ impl Default for Event {
         Self {
             length: Fraction::default(),
             span: Span::default(),
-            value: Value::default(),
+            value: Constant::default(),
             string: Rc::from("~"),
             targets: vec![],
         }
@@ -175,7 +209,7 @@ impl Default for Event {
 
 impl Event {
     /// The step's original parsed value.
-    pub fn value(&self) -> &Value {
+    pub fn value(&self) -> &Constant {
         &self.value
     }
 
@@ -230,7 +264,7 @@ impl Span {
 
 /// Possible types of values that are emitted by a [`Cycle`].
 #[derive(Clone, Debug, Default, PartialEq)]
-pub enum Value {
+pub enum Constant {
     #[default]
     Rest,
     Hold,
@@ -356,9 +390,9 @@ impl Step {
         }
     }
 
-    fn length(&self) -> Fraction {
+    fn length(&self, vars: Option<&Vars>) -> Fraction {
         match self {
-            Step::ReplicateExpression(re) => re.count.to_fraction().unwrap_or(Fraction::ONE),
+            Step::ReplicateExpression(re) => re.count.to_fraction(vars).unwrap_or(Fraction::ONE),
             _ => Fraction::ONE,
         }
     }
@@ -387,6 +421,59 @@ enum Static {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+enum Value {
+    Constant(Constant),
+    Variable(Rc<str>),
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Self::Constant(Constant::default())
+    }
+}
+
+impl Value {
+    fn to_float(&self, vars: Option<&Vars>) -> Option<f64> {
+        match self {
+            Self::Constant(l) => l.to_float(),
+            Self::Variable(_) => self.to_literal(vars).to_float(),
+        }
+    }
+    fn to_integer(&self, vars: Option<&Vars>) -> Option<i32> {
+        match self {
+            Self::Constant(l) => l.to_integer(),
+            Self::Variable(_) => self.to_literal(vars).to_integer(),
+        }
+    }
+    fn to_chance(&self, vars: Option<&Vars>) -> Option<f64> {
+        match self {
+            Self::Constant(l) => l.to_chance(),
+            Self::Variable(_) => self.to_literal(vars).to_chance(),
+        }
+    }
+    fn to_fraction(&self, vars: Option<&Vars>) -> Option<Fraction> {
+        match self {
+            Self::Constant(l) => l.to_fraction(),
+            Self::Variable(_) => self.to_literal(vars).to_fraction(),
+        }
+    }
+    fn to_target(&self, string: &Rc<str>, vars: Option<&Vars>) -> Option<Target> {
+        match self {
+            Self::Constant(l) => l.to_target(string),
+            Self::Variable(_) => self.to_literal(vars).to_target(string),
+        }
+    }
+    fn to_literal(&self, vars: Option<&Vars>) -> Constant {
+        match self {
+            Self::Constant(l) => l.clone(),
+            Self::Variable(rc) => vars
+                .and_then(|vars| vars.get(rc).cloned())
+                .unwrap_or(Constant::Name(Rc::clone(rc))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct Single {
     value: Value,
     string: Rc<str>,
@@ -395,7 +482,7 @@ struct Single {
 impl Default for Single {
     fn default() -> Self {
         Single {
-            value: Value::Rest,
+            value: Value::Constant(Constant::Rest),
             string: Rc::from("~"),
         }
     }
@@ -418,12 +505,12 @@ struct Polymeter {
 }
 
 impl Polymeter {
-    fn length(&self) -> Fraction {
+    fn length(&self, vars: Option<&Vars>) -> Fraction {
         if let Step::Subdivision(s) = self.steps.as_ref() {
             let l = s
                 .steps
                 .iter()
-                .fold(Fraction::ZERO, |a: Fraction, v: &Step| a + v.length());
+                .fold(Fraction::ZERO, |a: Fraction, v: &Step| a + v.length(vars));
             l
         } else {
             // unreachable
@@ -521,19 +608,6 @@ struct Range {
 // -------------------------------------------------------------------------------------------------
 
 impl Target {
-    fn parse(value: &Value, value_string: &Rc<str>) -> Option<Self> {
-        match value {
-            Value::Rest | Value::Hold => None,
-            Value::Integer(i) => Some(Self::from_index(*i)),
-            Value::Name(name) => Some(Self::from_name(Rc::clone(name))),
-            Value::Target(t) => Some(t.clone()),
-            Value::Float(_) | Value::Pitch(_) | Value::Chord(_, _) => {
-                // pass unexpected values as raw string and let clients deal with conversions or errors
-                Some(Self::from_name(Rc::clone(value_string)))
-            }
-        }
-    }
-
     fn from_index(index: i32) -> Self {
         Self::Index(index)
     }
@@ -621,7 +695,7 @@ impl Display for Pitch {
     }
 }
 
-impl Value {
+impl Constant {
     fn parse_integer(str: &str) -> Result<i32, String> {
         if let Some(hex) = str.strip_prefix("0x").or(str.strip_prefix("0X")) {
             i32::from_str_radix(hex, 16).map_err(|err| err.to_string())
@@ -638,64 +712,77 @@ impl Value {
         str.parse::<f64>().map_err(|err| err.to_string())
     }
 
-    fn from_float(str: &str) -> Result<Value, String> {
+    fn from_float(str: &str) -> Result<Constant, String> {
         Self::parse_float(str).map(Self::Float)
     }
 
-    fn from_integer(str: &str) -> Result<Value, String> {
+    fn from_integer(str: &str) -> Result<Constant, String> {
         Self::parse_integer(str).map(Self::Integer)
     }
 
     fn to_integer(&self) -> Option<i32> {
         match &self {
-            Value::Rest => None,
-            Value::Hold => None,
-            Value::Integer(i) => Some(*i),
-            Value::Float(f) => Some(*f as i32),
-            Value::Pitch(n) => Some(n.midi_note() as i32),
-            Value::Chord(p, _m) => Some(p.midi_note() as i32),
-            Value::Target(t) => match t {
+            Constant::Rest => None,
+            Constant::Hold => None,
+            Constant::Integer(i) => Some(*i),
+            Constant::Float(f) => Some(*f as i32),
+            Constant::Pitch(n) => Some(n.midi_note() as i32),
+            Constant::Chord(p, _m) => Some(p.midi_note() as i32),
+            Constant::Target(t) => match t {
                 Target::Index(i) => Some(*i),
                 Target::Named(_, v) => v.map(|f| f as i32),
             },
-            Value::Name(_n) => None,
+            Constant::Name(_n) => None,
         }
     }
 
     fn to_float(&self) -> Option<f64> {
         match &self {
-            Value::Rest => None,
-            Value::Hold => None,
-            Value::Integer(i) => Some(*i as f64),
-            Value::Float(f) => Some(*f),
-            Value::Pitch(n) => Some(n.midi_note() as f64),
-            Value::Chord(n, _m) => Some(n.midi_note() as f64),
-            Value::Target(t) => match t {
+            Constant::Rest => None,
+            Constant::Hold => None,
+            Constant::Integer(i) => Some(*i as f64),
+            Constant::Float(f) => Some(*f),
+            Constant::Pitch(n) => Some(n.midi_note() as f64),
+            Constant::Chord(n, _m) => Some(n.midi_note() as f64),
+            Constant::Target(t) => match t {
                 Target::Index(i) => Some(*i as f64),
                 Target::Named(_, v) => *v,
             },
-            Value::Name(_n) => None,
+            Constant::Name(_n) => None,
         }
     }
 
     fn to_chance(&self) -> Option<f64> {
         match &self {
-            Value::Rest => None,
-            Value::Hold => None,
-            Value::Integer(i) => Some((*i as f64).clamp(0.0, 100.0) / 100.0),
-            Value::Float(f) => Some(f.clamp(0.0, 1.0)),
-            Value::Pitch(p) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
-            Value::Chord(p, _m) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
-            Value::Target(t) => match t {
+            Constant::Rest => None,
+            Constant::Hold => None,
+            Constant::Integer(i) => Some((*i as f64).clamp(0.0, 100.0) / 100.0),
+            Constant::Float(f) => Some(f.clamp(0.0, 1.0)),
+            Constant::Pitch(p) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
+            Constant::Chord(p, _m) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
+            Constant::Target(t) => match t {
                 Target::Index(i) => Some(*i as f64),
                 Target::Named(_, v) => v.map(|f| f.clamp(0.0, 1.0)),
             },
-            Value::Name(_n) => None,
+            Constant::Name(_n) => None,
         }
     }
 
     fn to_fraction(&self) -> Option<Fraction> {
         self.to_float().and_then(Fraction::from_f64)
+    }
+
+    fn to_target(&self, string: &Rc<str>) -> Option<Target> {
+        match self {
+            Self::Rest | Constant::Hold => None,
+            Self::Integer(i) => Some(Target::from_index(*i)),
+            Self::Name(name) => Some(Target::from_name(Rc::clone(name))),
+            Self::Target(t) => Some(t.clone()),
+            Self::Float(_) | Constant::Pitch(_) | Constant::Chord(_, _) => {
+                // pass unexpected values as raw string and let clients deal with conversions or errors
+                Some(Target::from_name(Rc::clone(string)))
+            }
+        }
     }
 }
 
@@ -770,7 +857,7 @@ impl Event {
                 end: start + length,
             },
             string: Rc::from("~"),
-            value: Value::Rest,
+            value: Constant::Rest,
             targets: vec![],
         }
     }
@@ -779,7 +866,7 @@ impl Event {
     fn with_note(&self, note: u8, octave: u8) -> Self {
         let pitch = Pitch { note, octave };
         Self {
-            value: Value::Pitch(pitch.clone()),
+            value: Constant::Pitch(pitch.clone()),
             string: Rc::from(pitch.to_string()),
             ..self.clone()
         }
@@ -789,7 +876,7 @@ impl Event {
     fn with_chord(&self, note: u8, octave: u8, mode: &str) -> Self {
         let pitch = Pitch { note, octave };
         Self {
-            value: Value::Chord(pitch.clone(), Rc::from(mode)),
+            value: Constant::Chord(pitch.clone(), Rc::from(mode)),
             string: Rc::from(format!("{}'{}", pitch, mode)),
             ..self.clone()
         }
@@ -798,7 +885,7 @@ impl Event {
     #[cfg(test)]
     fn with_int(&self, i: i32) -> Self {
         Self {
-            value: Value::Integer(i),
+            value: Constant::Integer(i),
             string: Rc::from(i.to_string()),
             ..self.clone()
         }
@@ -807,7 +894,7 @@ impl Event {
     #[cfg(test)]
     fn with_name(&self, n: &'static str) -> Self {
         Self {
-            value: Value::Name(Rc::from(n)),
+            value: Constant::Name(Rc::from(n)),
             string: Rc::from(n.to_string()),
             ..self.clone()
         }
@@ -816,7 +903,7 @@ impl Event {
     #[cfg(test)]
     fn with_float(&self, f: f64) -> Self {
         Self {
-            value: Value::Float(f),
+            value: Constant::Float(f),
             string: Rc::from(f.to_string()),
             ..self.clone()
         }
@@ -891,7 +978,7 @@ impl Events {
             length: Fraction::ONE,
             span: Span::default(),
             string: Rc::from("~"),
-            value: Value::Rest,
+            value: Constant::Rest,
             targets: vec![],
         })
     }
@@ -917,14 +1004,6 @@ impl Events {
             Events::Single(s) => s.length = length,
             Events::Multi(m) => m.length = length,
             Events::Poly(p) => p.length = length,
-        }
-    }
-
-    fn first(&self) -> Option<Event> {
-        match self {
-            Events::Single(s) => Some(s.clone()),
-            Events::Multi(m) => m.events.first().and_then(Self::first),
-            Events::Poly(p) => p.channels.first().and_then(Self::first),
         }
     }
 
@@ -1120,11 +1199,11 @@ impl Events {
 
     // filter out holds while extending preceding events
     fn merge_holds(events: &mut Vec<Event>) {
-        if events.iter().any(|e| e.value == Value::Hold) {
+        if events.iter().any(|e| e.value == Constant::Hold) {
             let mut result: Vec<Event> = Vec::with_capacity(events.len());
             for e in events.iter() {
                 match e.value {
-                    Value::Hold => {
+                    Constant::Hold => {
                         if let Some(last) = result.last_mut() {
                             last.extend(e)
                         }
@@ -1140,14 +1219,14 @@ impl Events {
     // so any remaining rest can be converted to a note-off later
     // rests at the beginning of a pattern also get dropped
     fn merge_rests(events: &mut Vec<Event>) {
-        if events.iter().any(|e| e.value == Value::Rest) {
+        if events.iter().any(|e| e.value == Constant::Rest) {
             let mut result: Vec<Event> = Vec::with_capacity(events.len());
             for e in events.iter() {
                 match e.value {
-                    Value::Rest => {
+                    Constant::Rest => {
                         if let Some(last) = result.last_mut() {
                             match last.value {
-                                Value::Rest => last.extend(e),
+                                Constant::Rest => last.extend(e),
                                 _ => result.push(e.clone()),
                             }
                         }
@@ -1248,61 +1327,69 @@ impl CycleParser {
 
     /// parse a pair inside a single as a value
     fn value(pair: Pair<Rule>) -> Result<Value, String> {
-        match pair.as_rule() {
-            Rule::integer => Value::from_integer(pair.as_str()),
-            Rule::float => Value::from_float(pair.as_str()),
-            Rule::number => {
-                if let Some(n) = pair.into_inner().next() {
-                    match n.as_rule() {
-                        Rule::integer => Value::from_integer(n.as_str()),
-                        Rule::float => Value::from_float(n.as_str()),
-                        _ => Err(format!("unrecognized number\n{:?}", n)),
-                    }
-                } else {
-                    Err("empty single".to_string())
-                }
-            }
-            Rule::hold => Ok(Value::Hold),
-            Rule::rest => Ok(Value::Rest),
-            Rule::pitch => Ok(Value::Pitch(Pitch::parse(pair))),
-            Rule::chord => {
-                let mut pitch = Pitch { note: 0, octave: 4 };
-                let mut mode = "";
-                for p in pair.into_inner() {
-                    match p.as_rule() {
-                        Rule::pitch => {
-                            pitch = Pitch::parse(p);
+        if pair.as_rule() == Rule::variable {
+            pair.into_inner()
+                .next()
+                .ok_or("error in grammar, missing variable name".to_string())
+                .map(|name_pair| Value::Variable(Rc::from(name_pair.as_str())))
+        } else {
+            let constant = match pair.as_rule() {
+                Rule::integer => Constant::from_integer(pair.as_str()),
+                Rule::float => Constant::from_float(pair.as_str()),
+                Rule::number => {
+                    if let Some(n) = pair.into_inner().next() {
+                        match n.as_rule() {
+                            Rule::integer => Constant::from_integer(n.as_str()),
+                            Rule::float => Constant::from_float(n.as_str()),
+                            _ => Err(format!("unrecognized number\n{:?}", n)),
                         }
-                        Rule::mode => {
-                            mode = p.as_str();
-                        }
-                        _ => (),
+                    } else {
+                        Err("empty single".to_string())
                     }
                 }
-                Ok(Value::Chord(pitch, Rc::from(mode)))
-            }
-            Rule::target => {
-                let name = pair.as_str().get(0..1).ok_or(format!(
-                    "error in grammar, missing target key in pair\n{:?}",
-                    pair
-                ))?;
-                let value = pair.clone().into_inner().next().ok_or(format!(
-                    "error in grammar, missing target value in pair\n{:?}",
-                    pair
-                ))?;
+                Rule::hold => Ok(Constant::Hold),
+                Rule::rest => Ok(Constant::Rest),
+                Rule::pitch => Ok(Constant::Pitch(Pitch::parse(pair))),
+                Rule::chord => {
+                    let mut pitch = Pitch { note: 0, octave: 4 };
+                    let mut mode = "";
+                    for p in pair.into_inner() {
+                        match p.as_rule() {
+                            Rule::pitch => {
+                                pitch = Pitch::parse(p);
+                            }
+                            Rule::mode => {
+                                mode = p.as_str();
+                            }
+                            _ => (),
+                        }
+                    }
+                    Ok(Constant::Chord(pitch, Rc::from(mode)))
+                }
+                Rule::target => {
+                    let name = pair.as_str().get(0..1).ok_or(format!(
+                        "error in grammar, missing target key in pair\n{:?}",
+                        pair
+                    ))?;
+                    let value = pair.clone().into_inner().next().ok_or(format!(
+                        "error in grammar, missing target value in pair\n{:?}",
+                        pair
+                    ))?;
 
-                match name.as_bytes() {
-                    b"#" => Ok(Value::Target(Target::Index(Value::parse_integer(
-                        value.as_str(),
-                    )?))),
-                    _ => Ok(Value::Target(Target::Named(
-                        Rc::from(name),
-                        Some(Value::parse_float(value.as_str())?),
-                    ))),
+                    match name.as_bytes() {
+                        b"#" => Ok(Constant::Target(Target::Index(Constant::parse_integer(
+                            value.as_str(),
+                        )?))),
+                        _ => Ok(Constant::Target(Target::Named(
+                            Rc::from(name),
+                            Some(Constant::parse_float(value.as_str())?),
+                        ))),
+                    }
                 }
-            }
-            Rule::name => Ok(Value::Name(Rc::from(pair.as_str()))),
-            _ => Err(format!("unrecognized target value\n{:?}", pair)),
+                Rule::name => Ok(Constant::Name(Rc::from(pair.as_str()))),
+                _ => Err(format!("unrecognized target value\n{:?}", pair)),
+            }?;
+            Ok(Value::Constant(constant))
         }
     }
 
@@ -1335,7 +1422,7 @@ impl CycleParser {
                     };
                     for i in range {
                         steps.push(Step::Single(Single {
-                            value: Value::Integer(i),
+                            value: Value::Constant(Constant::Integer(i)),
                             string: Rc::from(i.to_string()),
                         }))
                     }
@@ -1499,7 +1586,7 @@ impl CycleParser {
 
                 if stack.len() > 1 && count > 0 {
                     let count = Step::Single(Single {
-                        value: Value::Integer(count as i32),
+                        value: Value::Constant(Constant::Integer(count as i32)),
                         string: Rc::from(count.to_string()),
                     });
                     // if there is a stack but no count, the first section will determine the count of the rest
@@ -1579,7 +1666,7 @@ impl CycleParser {
         let weight = if let Some(pair) = op_pair.into_inner().next() {
             Self::single(pair)?.value
         } else {
-            Value::Float(2.0)
+            Value::Constant(Constant::Float(2.0))
         };
 
         Ok(Step::WeightExpression(WeightExpression {
@@ -1592,7 +1679,7 @@ impl CycleParser {
         let count = if let Some(pair) = op_pair.into_inner().next() {
             Self::single(pair)?.value
         } else {
-            Value::Float(2.0)
+            Value::Constant(Constant::Float(2.0))
         };
 
         Ok(Step::ReplicateExpression(ReplicateExpression {
@@ -1610,7 +1697,7 @@ impl CycleParser {
                 .and_then(Self::single)?
                 .value
         } else {
-            Value::Float(0.5)
+            Value::Constant(Constant::Float(0.5))
         };
 
         Ok(Step::Degrade(Degrade {
@@ -1677,19 +1764,22 @@ impl CycleParser {
         let mut pattern = Self::step(p)?;
         let mut key = k.into_inner();
         if let Some(name) = key.next() {
+            // FIX parse variables for targets
             pattern.mutate_singles(&mut |single: &mut Single| {
-                if let Some(f) = single.value.to_float() {
-                    if !matches!(single.value, Value::Target(_)) {
-                        single.value =
-                            Value::Target(Target::Named(Rc::from(name.as_str()), Some(f)));
+                if let Some(f) = single.value.to_float(None) {
+                    if !matches!(single.value, Value::Constant(Constant::Target(_))) {
+                        single.value = Value::Constant(Constant::Target(Target::Named(
+                            Rc::from(name.as_str()),
+                            Some(f),
+                        )));
                     }
                 }
             });
         } else {
             pattern.mutate_singles(&mut |single: &mut Single| {
-                if let Some(i) = single.value.to_integer() {
-                    if !matches!(single.value, Value::Target(_)) {
-                        single.value = Value::Target(Target::Index(i));
+                if let Some(i) = single.value.to_integer(None) {
+                    if !matches!(single.value, Value::Constant(Constant::Target(_))) {
+                        single.value = Value::Constant(Constant::Target(Target::Index(i)));
                     }
                 }
             });
@@ -1715,6 +1805,7 @@ impl Cycle {
         span: &Span,
         limit: usize,
         overlap: bool,
+        vars: Option<&Vars>,
     ) -> Result<Events, String> {
         let range = span.whole_range();
         let mut cycles = Vec::with_capacity(range.clone().count());
@@ -1723,7 +1814,7 @@ impl Cycle {
                 Fraction::from_u32(cycle).ok_or(OVERFLOW_ERROR)?,
                 Fraction::from_u32(cycle + 1).ok_or(OVERFLOW_ERROR)?,
             );
-            let mut events = Self::output(step, state, cycle, limit, overlap)?;
+            let mut events = Self::output(step, state, cycle, limit, overlap, vars)?;
             events.transform_spans(&span);
             cycles.push(events)
         }
@@ -1743,20 +1834,21 @@ impl Cycle {
         mult: Fraction,
         limit: usize,
         overlap: bool,
+        vars: Option<&Vars>,
     ) -> Result<Events, String> {
         let span = Span::new(
             Fraction::from_u32(cycle).ok_or(OVERFLOW_ERROR)? * mult,
             Fraction::from_u32(cycle + 1).ok_or(OVERFLOW_ERROR)? * mult,
         );
-        let mut events = Self::output_span(step, state, &span, limit, overlap)?;
+        let mut events = Self::output_span(step, state, &span, limit, overlap, vars)?;
         events.normalize_spans(&span);
         Ok(events)
     }
 
     // helper to calculate the right multiplier for polymeter and speed expressions
-    fn step_multiplier(step: &Step, value: &Value) -> Fraction {
+    fn step_multiplier(step: &Step, value: &Constant, vars: Option<&Vars>) -> Fraction {
         match step {
-            Step::Polymeter(pm) => value.to_fraction().unwrap_or(Fraction::ZERO) / pm.length(),
+            Step::Polymeter(pm) => value.to_fraction().unwrap_or(Fraction::ZERO) / pm.length(vars),
             Step::SpeedExpression(e) => match e.op {
                 SpeedOp::Fast() => value.to_fraction().unwrap_or(Fraction::ZERO),
                 SpeedOp::Slow() => value
@@ -1781,7 +1873,7 @@ impl Cycle {
     // overlay two lists of events and apply the targets from the second to the first
     fn apply_targets(events: &mut [Event], target_events: &[Event]) {
         for target_event in target_events.iter() {
-            if let Some(target) = Target::parse(&target_event.value, &target_event.string) {
+            if let Some(target) = target_event.value.to_target(&target_event.string) {
                 for event in events.iter_mut() {
                     if event.span.overlaps(&target_event.span)
                         && !{
@@ -1818,8 +1910,9 @@ impl Cycle {
         state: &mut CycleState,
         cycle: u32,
         limit: usize,
+        vars: Option<&Vars>,
     ) -> Result<(Vec<Vec<Event>>, Span), String> {
-        let mut events = Self::output(step, state, cycle, limit, true)?;
+        let mut events = Self::output(step, state, cycle, limit, true, vars)?;
         events.transform_spans(&events.get_span());
         let mut channels = vec![];
         events.flatten(&mut channels, &mut 0);
@@ -1835,12 +1928,13 @@ impl Cycle {
         cycle: u32,
         limit: usize,
         overlap: bool,
+        vars: Option<&Vars>,
     ) -> Result<Events, String> {
         match right {
             // multiply with single values to avoid generating events
             Step::Single(single) => {
-                let mut events = Self::output(left, state, cycle, limit, overlap)?;
-                if let Some(target) = Target::parse(&single.value, &single.string) {
+                let mut events = Self::output(left, state, cycle, limit, overlap, vars)?;
+                if let Some(target) = single.value.to_target(&single.string, vars) {
                     events.mutate_events(&mut |event: &mut Event| {
                         if !{
                             let this = &event;
@@ -1855,8 +1949,9 @@ impl Cycle {
             }
             _ => {
                 // generate all the events as flat vecs from both the left and right side of the expression
-                let (left_channels, left_span) = Self::output_flat(left, state, cycle, limit)?;
-                let (target_channels, _) = Self::output_flat(right, state, cycle, limit)?;
+                let (left_channels, left_span) =
+                    Self::output_flat(left, state, cycle, limit, vars)?;
+                let (target_channels, _) = Self::output_flat(right, state, cycle, limit, vars)?;
 
                 // iterate over channels from both sides to create necessary new stacks if the right side is polyphonic
                 let mut channel_events: Vec<Events> = Vec::with_capacity(target_channels.len());
@@ -1889,6 +1984,7 @@ impl Cycle {
         cycle: u32,
         limit: usize,
         overlap: bool,
+        vars: Option<&Vars>,
     ) -> Result<Events, String> {
         let left = match step {
             Step::Polymeter(pm) => pm.steps.as_ref(),
@@ -1899,14 +1995,14 @@ impl Cycle {
             // multiply with single values to avoid generating events
             Step::Single(single) => {
                 // apply multiplier
-                let multiplier = Self::step_multiplier(step, &single.value);
+                let multiplier = Self::step_multiplier(step, &single.value.to_literal(vars), vars);
                 Ok(Self::output_multiplied(
-                    left, state, cycle, multiplier, limit, overlap,
+                    left, state, cycle, multiplier, limit, overlap, vars,
                 )?)
             }
             _ => {
                 // generate and flatten the events for the right side of the expression
-                let events = Self::output(right, state, cycle, limit, overlap)?;
+                let events = Self::output(right, state, cycle, limit, overlap, vars)?;
                 let channels = events.export();
 
                 // extract a float to use as mult from each event and output the step with it
@@ -1915,9 +2011,9 @@ impl Cycle {
                     let mut multi_events: Vec<Events> = Vec::with_capacity(channel.len());
                     for event in channel {
                         // apply multiplier
-                        let multiplier = Self::step_multiplier(step, &event.value);
+                        let multiplier = Self::step_multiplier(step, &event.value, vars);
                         let mut partial_events = Self::output_multiplied(
-                            left, state, cycle, multiplier, limit, overlap,
+                            left, state, cycle, multiplier, limit, overlap, vars,
                         )?;
                         // crop and push to multi events
                         partial_events.crop(&event.span, overlap);
@@ -1947,6 +2043,7 @@ impl Cycle {
         cycle: u32,
         limit: usize,
         overlap: bool,
+        vars: Option<&Vars>,
     ) -> Result<Events, String> {
         let events = match step {
             Step::Single(s) => {
@@ -1961,7 +2058,7 @@ impl Cycle {
                     length: Fraction::ONE,
                     span: Span::default(),
                     string: Rc::clone(&s.string),
-                    value: s.value.clone(),
+                    value: s.value.to_literal(vars),
                     targets: vec![],
                 })
             }
@@ -1971,7 +2068,7 @@ impl Cycle {
                 } else {
                     let mut events = Vec::with_capacity(sd.steps.len());
                     for s in &sd.steps {
-                        let e = Self::output(s, state, cycle, limit, overlap)?;
+                        let e = Self::output(s, state, cycle, limit, overlap, vars)?;
                         events.push(e)
                     }
 
@@ -1991,13 +2088,14 @@ impl Cycle {
                 //     .and_then(|e| e.value.to_fraction())
                 //     .unwrap_or(Fraction::ONE);
 
-                let mut events = Self::output(we.left.as_ref(), state, cycle, limit, overlap)?;
-                let weight = we.weight.to_fraction().unwrap_or(Fraction::ONE);
+                let mut events =
+                    Self::output(we.left.as_ref(), state, cycle, limit, overlap, vars)?;
+                let weight = we.weight.to_fraction(vars).unwrap_or(Fraction::ONE);
                 events.set_length(weight);
                 events
             }
             Step::ReplicateExpression(we) => {
-                let count = we.count.to_float().unwrap_or(2.0);
+                let count = we.count.to_float(vars).unwrap_or(2.0);
                 let ceil = count.ceil();
                 let len = if ceil == 0.0 { 1 } else { ceil as usize };
                 let mult = count / ceil;
@@ -2010,12 +2108,12 @@ impl Cycle {
                     op: SpeedOp::Fast(),
                     left: Box::from(sub),
                     right: Box::from(Step::Single(Single {
-                        value: Value::Float(mult),
+                        value: Value::Constant(Constant::Float(mult)),
                         string: Rc::from(""),
                     })),
                 });
 
-                let mut events = Self::output(&step, state, cycle, limit, overlap)?;
+                let mut events = Self::output(&step, state, cycle, limit, overlap, vars)?;
                 events.set_length(Fraction::from_f64(count).unwrap_or(Fraction::ONE));
                 events
             }
@@ -2027,7 +2125,7 @@ impl Cycle {
                     let current = cycle % length;
                     a.steps
                         .get(current as usize)
-                        .map(|step| Self::output(step, state, cycle / length, limit, overlap))
+                        .map(|step| Self::output(step, state, cycle / length, limit, overlap, vars))
                         .unwrap_or(
                             Ok(Events::empty()), // unreachable
                         )?
@@ -2035,18 +2133,24 @@ impl Cycle {
             }
             Step::Choices(cs) => {
                 let choice = state.rng.random_range(0..cs.choices.len());
-                Self::output(&cs.choices[choice], state, cycle, limit, overlap)?
+                Self::output(&cs.choices[choice], state, cycle, limit, overlap, vars)?
             }
-            Step::Polymeter(pm) => {
-                Self::output_with_speed(pm.count.as_ref(), step, state, cycle, limit, overlap)?
-            }
+            Step::Polymeter(pm) => Self::output_with_speed(
+                pm.count.as_ref(),
+                step,
+                state,
+                cycle,
+                limit,
+                overlap,
+                vars,
+            )?,
             Step::Stack(st) => {
                 if st.stack.is_empty() {
                     Events::empty()
                 } else {
                     let mut channels = Vec::with_capacity(st.stack.len());
                     for s in &st.stack {
-                        channels.push(Self::output(s, state, cycle, limit, overlap)?)
+                        channels.push(Self::output(s, state, cycle, limit, overlap, vars)?)
                     }
                     Events::maybe_poly(PolyEvents {
                         span: Span::default(),
@@ -2056,11 +2160,11 @@ impl Cycle {
                 }
             }
             Step::Degrade(d) => {
-                let mut out = Self::output(d.step.as_ref(), state, cycle, limit, overlap)?;
+                let mut out = Self::output(d.step.as_ref(), state, cycle, limit, overlap, vars)?;
                 out.mutate_events(&mut |event: &mut Event| {
-                    if let Some(chance) = d.chance.to_chance() {
+                    if let Some(chance) = d.chance.to_chance(vars) {
                         if chance < state.rng.random_range(0.0..1.0) {
-                            event.value = Value::Rest
+                            event.value = Constant::Rest
                         }
                     }
                 });
@@ -2073,9 +2177,10 @@ impl Cycle {
                 cycle,
                 limit,
                 overlap,
+                vars,
             )?,
             Step::SpeedExpression(e) => {
-                Self::output_with_speed(e.right.as_ref(), step, state, cycle, limit, overlap)?
+                Self::output_with_speed(e.right.as_ref(), step, state, cycle, limit, overlap, vars)?
             }
             Step::Bjorklund(b) => {
                 let mut events = vec![];
@@ -2089,13 +2194,13 @@ impl Cycle {
                                     None => None,
                                     Some(r) => match r.as_ref() {
                                         Step::Single(rotation_single) => {
-                                            rotation_single.value.to_integer()
+                                            rotation_single.value.to_integer(vars)
                                         }
                                         _ => None, // TODO support something other than Step::Single as rotation
                                     },
                                 };
-                                if let Some(steps) = steps_single.value.to_integer() {
-                                    if let Some(pulses) = pulses_single.value.to_integer() {
+                                if let Some(steps) = steps_single.value.to_integer(vars) {
+                                    if let Some(pulses) = pulses_single.value.to_integer(vars) {
                                         events.reserve(pulses as usize);
                                         let out = Self::output(
                                             b.left.as_ref(),
@@ -2103,6 +2208,7 @@ impl Cycle {
                                             cycle,
                                             limit,
                                             overlap,
+                                            vars,
                                         )?;
                                         for pulse in euclidean(
                                             steps.max(0) as u32,
@@ -2153,12 +2259,12 @@ impl Cycle {
     fn print_steps(step: &Step, level: usize) {
         let name = match step {
             Step::Single(s) => match &s.value {
-                Value::Pitch(_p) => format!("{:?} {}", s.value, s.string),
+                Value::Constant(Constant::Pitch(_p)) => format!("{:?} {}", s.value, s.string),
                 _ => format!("{:?} {:?}", s.value, s.string),
             },
             Step::Subdivision(sd) => format!("Subdivision [{}]", sd.steps.len()),
             Step::Alternating(a) => format!("Alternating <{}>", a.steps.len()),
-            Step::Polymeter(pm) => format!("Polymeter {{{}}}", pm.length()), //, pm.count),
+            Step::Polymeter(pm) => format!("Polymeter {{{:?}}}", pm.count),
             Step::Choices(cs) => format!("Choices |{}|", cs.choices.len()),
             Step::Stack(st) => format!("Stack ({})", st.stack.len()),
             Step::SpeedExpression(e) => format!("Speed Expression {:?}", e.op),

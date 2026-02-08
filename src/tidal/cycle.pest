@@ -21,6 +21,8 @@ target = ${ ("#" ~ integer) | (ASCII_ALPHA ~ float) }
 target_name = ${ "#" | name }
 target_assign = { target_name ~ "=" ~ parameter }
 
+variable = ${ "$" ~ name}
+
 /// chord as pitch with mode string, separated via "'"
 mode    = ${ (ASCII_ALPHANUMERIC | "#" | "-" | "+" | "^")+ }
 chord   = ${ pitch ~ "'" ~ mode }
@@ -37,7 +39,7 @@ name = @{ ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "_")* }
 repeat = { "!" }
 
 /// possible literals for single steps
-single = { hold | rest | chord | target | pitch | number | name }
+single = { hold | rest | chord | target | pitch | number | name | variable }
 
 choice_op = {"|"}
 stack_op = {","}
