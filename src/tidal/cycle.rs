@@ -208,14 +208,19 @@ impl Default for Event {
 }
 
 impl Event {
+    /// The step's value as string representation: Either the value name's original string value
+    /// or the original value string, unparsed as fallback.
+    pub fn as_str(&self) -> Rc<str> {
+        match &self.value {
+            // prefer `Name` over self.string, as the string may contain unresolved variables
+            Constant::Name(name) => Rc::clone(name),
+            _ => Rc::clone(&self.string),
+        }
+    }
+
     /// The step's original parsed value.
     pub fn value(&self) -> &Constant {
         &self.value
-    }
-
-    /// The step's original value string, unparsed.
-    pub fn string(&self) -> &str {
-        &self.string
     }
 
     /// The step's time span.
