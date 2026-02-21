@@ -122,6 +122,314 @@ fn parse() -> Result<(), String> {
 }
 
 #[test]
+fn targets() -> Result<(), String> {
+    assert_eq!(
+        Cycle::from("a:v=0.5")?.generate()?,
+        [[Event::at(Fraction::from(0), Fraction::new(1, 1))
+            .with_note(9, 4)
+            .with_target(Target::Named("v".into(), Some(0.5)))]]
+    );
+
+    assert_eq!(
+        Cycle::from("a:1 b:target")?.generate()?,
+        [[
+            Event::at(Fraction::from(0), Fraction::new(1, 2))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1)),
+            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                .with_note(11, 4)
+                .with_target(Target::from_name("target".into()))
+        ]]
+    );
+
+    assert_cycles(
+        "a:<1 2>",
+        vec![
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1))]],
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::from_index(2))]],
+        ],
+    )?;
+
+    assert_cycles(
+        "a:1:2:Target",
+        vec![vec![vec![Event::at(
+            Fraction::from(0),
+            Fraction::new(1, 1),
+        )
+        .with_note(9, 4)
+        .with_targets(vec![
+            Target::from_index(1),
+            Target::from_name("Target".into()),
+        ])]]],
+    )?;
+
+    assert_cycles(
+        "[a:1:2]:<3 4>",
+        vec![
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1))]],
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1))]],
+        ],
+    )?;
+
+    // target expression preserves the structure from the left side
+    assert_eq!(
+        Cycle::from("[a b c d]:[1 2 3]")?.generate()?,
+        [[
+            Event::at(Fraction::from(0), Fraction::new(1, 4))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1)),
+            Event::at(Fraction::new(1, 4), Fraction::new(1, 4))
+                .with_note(11, 4)
+                .with_target(Target::from_index(1)),
+            Event::at(Fraction::new(2, 4), Fraction::new(1, 4))
+                .with_note(0, 4)
+                .with_target(Target::from_index(2)),
+            Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                .with_note(2, 4)
+                .with_target(Target::from_index(3)),
+        ]]
+    );
+
+    assert_cycles(
+        "{<0 0 d#8:test> 1 <c d e>:0xB [<.5 0.95> 1.]}%3",
+        vec![
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 3)).with_int(0),
+                Event::at(Fraction::new(1, 3), Fraction::new(1, 3)).with_int(1),
+                Event::at(Fraction::new(2, 3), Fraction::new(1, 3))
+                    .with_note(0, 4)
+                    .with_target(Target::from_index(0xB)),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 6)).with_float(0.5),
+                Event::at(Fraction::new(1, 6), Fraction::new(1, 6)).with_float(1.0),
+                Event::at(Fraction::new(1, 3), Fraction::new(1, 3)).with_int(0),
+                Event::at(Fraction::new(2, 3), Fraction::new(1, 3)).with_int(1),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 3))
+                    .with_note(2, 4)
+                    .with_target(Target::from_index(0xB)),
+                Event::at(Fraction::new(2, 6), Fraction::new(1, 6)).with_float(0.95),
+                Event::at(Fraction::new(3, 6), Fraction::new(1, 6)).with_float(1.0),
+                Event::at(Fraction::new(2, 3), Fraction::new(1, 3))
+                    .with_note(3, 8)
+                    .with_target(Target::from_name("test".into())),
+            ]],
+        ],
+    )?;
+
+    assert_cycles(
+        "[1 2] [3 4,[5 6]:42]",
+        vec![vec![
+            vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(1),
+                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(2),
+                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(3),
+                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(4),
+            ],
+            vec![
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
+                    .with_int(5)
+                    .with_target(Target::from_index(42)),
+                Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                    .with_int(6)
+                    .with_target(Target::from_index(42)),
+            ],
+        ]],
+    )?;
+
+    assert_cycles(
+        "[<1 10> <2 20>:a](2,5)",
+        vec![
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 10)).with_int(1),
+                Event::at(Fraction::new(1, 10), Fraction::new(1, 10))
+                    .with_int(2)
+                    .with_target(Target::from_name("a".into())),
+                Event::at(Fraction::new(1, 5), Fraction::new(1, 5)),
+                Event::at(Fraction::new(2, 5), Fraction::new(1, 10)).with_int(1),
+                Event::at(Fraction::new(5, 10), Fraction::new(1, 10))
+                    .with_int(2)
+                    .with_target(Target::from_name("a".into())),
+                Event::at(Fraction::new(3, 5), Fraction::new(2, 5)),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 10)).with_int(10),
+                Event::at(Fraction::new(1, 10), Fraction::new(1, 10))
+                    .with_int(20)
+                    .with_target(Target::from_name("a".into())),
+                Event::at(Fraction::new(1, 5), Fraction::new(1, 5)),
+                Event::at(Fraction::new(2, 5), Fraction::new(1, 10)).with_int(10),
+                Event::at(Fraction::new(5, 10), Fraction::new(1, 10))
+                    .with_int(20)
+                    .with_target(Target::from_name("a".into())),
+                Event::at(Fraction::new(3, 5), Fraction::new(2, 5)),
+            ]],
+        ],
+    )?;
+
+    // when using ~ as a target, it's possible selectively skip overriding the outer target from within
+    assert_cycles(
+        "[a [b:<~ 7> b:<8 9>]]:[1 [2 3], 4]",
+        vec![
+            vec![
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2))
+                        .with_note(9, 4)
+                        .with_target(Target::from_index(1)),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        // this iteration lets the outer context set the target
+                        .with_target(Target::from_index(2)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(8)),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2))
+                        .with_note(9, 4)
+                        .with_target(Target::from_index(4)),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(4)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(8)),
+                ],
+            ],
+            vec![
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2))
+                        .with_note(9, 4)
+                        .with_target(Target::from_index(1)),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(7)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(9)),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2))
+                        .with_note(9, 4)
+                        .with_target(Target::from_index(4)),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(7)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                        .with_note(11, 4)
+                        .with_target(Target::from_index(9)),
+                ],
+            ],
+        ],
+    )?;
+
+    assert_cycles(
+        "[a b]:<1 target>",
+        vec![
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 2))
+                    .with_note(9, 4)
+                    .with_target(Target::from_index(1)),
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                    .with_note(11, 4)
+                    .with_target(Target::from_index(1)),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 2))
+                    .with_note(9, 4)
+                    .with_target(Target::from_name("target".into())),
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                    .with_note(11, 4)
+                    .with_target(Target::from_name("target".into())),
+            ]],
+        ],
+    )?;
+
+    assert_cycle_equality(
+        "[1 2 3 4]:v=[0.2 0.3 0.4 p.8]",
+        "[1 2 3 4]:[v0.2 v0.3 v0.4 p.8]",
+    )?;
+
+    assert_cycle_equality("[1 2 3 4]:g=[0.1 10.]", "[1 2 3 4]:[g0.1 g10.]")?;
+
+    assert_cycles(
+        "[a:1 b]:<3 4>",
+        vec![
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 2))
+                    .with_note(9, 4)
+                    .with_target(Target::from_index(1)),
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                    .with_note(11, 4)
+                    .with_target(Target::from_index(3)),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 2))
+                    .with_note(9, 4)
+                    .with_target(Target::from_index(1)),
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                    .with_note(11, 4)
+                    .with_target(Target::from_index(4)),
+            ]],
+        ],
+    )?;
+
+    assert_eq!(
+        Cycle::from("a:1 b:v0.1:v1.0:p1.0:g100.0")?.generate()?,
+        [[
+            Event::at(Fraction::from(0), Fraction::new(1, 2))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1)),
+            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                .with_note(11, 4)
+                .with_targets(vec![
+                    Target::Named("v".into(), Some(0.1)),
+                    // second v should not be applied
+                    Target::Named("p".into(), Some(1.0)),
+                    Target::Named("g".into(), Some(100.0)),
+                ])
+        ]]
+    );
+
+    // outer instrument values shouldn't override inner ones
+    assert_eq!(
+        Cycle::from("[a:#2 b]:#3")?.generate()?,
+        [[
+            Event::at(Fraction::from(0), Fraction::new(1, 2))
+                .with_note(9, 4)
+                .with_target(Target::from_index(2)),
+            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                .with_note(11, 4)
+                .with_target(Target::from_index(3)),
+        ]]
+    );
+
+    assert_eq!(
+        Cycle::from("a:1:#1 b:#1:1")?.generate()?,
+        [[
+            Event::at(Fraction::from(0), Fraction::new(1, 2))
+                .with_note(9, 4)
+                .with_target(Target::from_index(1)),
+            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                .with_note(11, 4)
+                .with_target(Target::Index(1)),
+        ]]
+    );
+
+    Ok(())
+}
+
+#[test]
 fn generate() -> Result<(), String> {
     assert_eq!(
         Cycle::from("[0x0] [0x1A] [0XA] [-0X5] [-0XA0] [-0Xaa]")?.generate()?,
@@ -308,35 +616,6 @@ fn generate() -> Result<(), String> {
         ],
     )?;
 
-    assert_cycles(
-        "{<0 0 d#8:test> 1 <c d e>:0xB [<.5 0.95> 1.]}%3",
-        vec![
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 3)).with_int(0),
-                Event::at(Fraction::new(1, 3), Fraction::new(1, 3)).with_int(1),
-                Event::at(Fraction::new(2, 3), Fraction::new(1, 3))
-                    .with_note(0, 4)
-                    .with_target(Target::from_index(0xB)),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 6)).with_float(0.5),
-                Event::at(Fraction::new(1, 6), Fraction::new(1, 6)).with_float(1.0),
-                Event::at(Fraction::new(1, 3), Fraction::new(1, 3)).with_int(0),
-                Event::at(Fraction::new(2, 3), Fraction::new(1, 3)).with_int(1),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 3))
-                    .with_note(2, 4)
-                    .with_target(Target::from_index(0xB)),
-                Event::at(Fraction::new(2, 6), Fraction::new(1, 6)).with_float(0.95),
-                Event::at(Fraction::new(3, 6), Fraction::new(1, 6)).with_float(1.0),
-                Event::at(Fraction::new(2, 3), Fraction::new(1, 3))
-                    .with_note(3, 8)
-                    .with_target(Target::from_name("test".into())),
-            ]],
-        ],
-    )?;
-
     assert_eq!(
         Cycle::from("[1 middle _] {}%42 [] <>")?.generate()?,
         [[
@@ -374,26 +653,6 @@ fn generate() -> Result<(), String> {
                 Event::at(Fraction::from(0), Fraction::from(1)).with_name("c6a_name")
             ]],
         ],
-    )?;
-
-    assert_cycles(
-        "[1 2] [3 4,[5 6]:42]",
-        vec![vec![
-            vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(1),
-                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(2),
-                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(3),
-                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(4),
-            ],
-            vec![
-                Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
-                    .with_int(5)
-                    .with_target(Target::from_index(42)),
-                Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
-                    .with_int(6)
-                    .with_target(Target::from_index(42)),
-            ],
-        ]],
     )?;
 
     assert_eq!(
@@ -440,36 +699,6 @@ fn generate() -> Result<(), String> {
                 Event::at(Fraction::new(10, 11), Fraction::new(1, 11)),
             ],
         ]],
-    )?;
-
-    assert_cycles(
-        "[<1 10> <2 20>:a](2,5)",
-        vec![
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 10)).with_int(1),
-                Event::at(Fraction::new(1, 10), Fraction::new(1, 10))
-                    .with_int(2)
-                    .with_target(Target::from_name("a".into())),
-                Event::at(Fraction::new(1, 5), Fraction::new(1, 5)),
-                Event::at(Fraction::new(2, 5), Fraction::new(1, 10)).with_int(1),
-                Event::at(Fraction::new(5, 10), Fraction::new(1, 10))
-                    .with_int(2)
-                    .with_target(Target::from_name("a".into())),
-                Event::at(Fraction::new(3, 5), Fraction::new(2, 5)),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 10)).with_int(10),
-                Event::at(Fraction::new(1, 10), Fraction::new(1, 10))
-                    .with_int(20)
-                    .with_target(Target::from_name("a".into())),
-                Event::at(Fraction::new(1, 5), Fraction::new(1, 5)),
-                Event::at(Fraction::new(2, 5), Fraction::new(1, 10)).with_int(10),
-                Event::at(Fraction::new(5, 10), Fraction::new(1, 10))
-                    .with_int(20)
-                    .with_target(Target::from_name("a".into())),
-                Event::at(Fraction::new(3, 5), Fraction::new(2, 5)),
-            ]],
-        ],
     )?;
 
     assert_eq!(
@@ -538,216 +767,6 @@ fn generate() -> Result<(), String> {
             ]],
         ],
     )?;
-
-    assert_eq!(
-        Cycle::from("a:1 b:target")?.generate()?,
-        [[
-            Event::at(Fraction::from(0), Fraction::new(1, 2))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1)),
-            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                .with_note(11, 4)
-                .with_target(Target::from_name("target".into()))
-        ]]
-    );
-
-    assert_cycles(
-        "a:<1 2>",
-        vec![
-            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1))]],
-            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
-                .with_note(9, 4)
-                .with_target(Target::from_index(2))]],
-        ],
-    )?;
-
-    assert_cycles(
-        "a:1:2:Target",
-        vec![vec![vec![Event::at(
-            Fraction::from(0),
-            Fraction::new(1, 1),
-        )
-        .with_note(9, 4)
-        .with_targets(vec![
-            Target::from_index(1),
-            Target::from_name("Target".into()),
-        ])]]],
-    )?;
-
-    assert_cycles(
-        "[a:1:2]:<3 4>",
-        vec![
-            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1))]],
-            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1))]],
-        ],
-    )?;
-
-    // target expression preserves the structure from the left side
-    assert_eq!(
-        Cycle::from("[a b c d]:[1 2 3]")?.generate()?,
-        [[
-            Event::at(Fraction::from(0), Fraction::new(1, 4))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1)),
-            Event::at(Fraction::new(1, 4), Fraction::new(1, 4))
-                .with_note(11, 4)
-                .with_target(Target::from_index(1)),
-            Event::at(Fraction::new(2, 4), Fraction::new(1, 4))
-                .with_note(0, 4)
-                .with_target(Target::from_index(2)),
-            Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
-                .with_note(2, 4)
-                .with_target(Target::from_index(3)),
-        ]]
-    );
-
-    // when using ~ as a target, it's possible selectively skip overriding the outer target from within
-    assert_cycles(
-        "[a [b:<~ 7> b:<8 9>]]:[1 [2 3], 4]",
-        vec![
-            vec![
-                vec![
-                    Event::at(Fraction::from(0), Fraction::new(1, 2))
-                        .with_note(9, 4)
-                        .with_target(Target::from_index(1)),
-                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        // this iteration lets the outer context set the target
-                        .with_target(Target::from_index(2)),
-                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(8)),
-                ],
-                vec![
-                    Event::at(Fraction::from(0), Fraction::new(1, 2))
-                        .with_note(9, 4)
-                        .with_target(Target::from_index(4)),
-                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(4)),
-                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(8)),
-                ],
-            ],
-            vec![
-                vec![
-                    Event::at(Fraction::from(0), Fraction::new(1, 2))
-                        .with_note(9, 4)
-                        .with_target(Target::from_index(1)),
-                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(7)),
-                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(9)),
-                ],
-                vec![
-                    Event::at(Fraction::from(0), Fraction::new(1, 2))
-                        .with_note(9, 4)
-                        .with_target(Target::from_index(4)),
-                    Event::at(Fraction::new(1, 2), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(7)),
-                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
-                        .with_note(11, 4)
-                        .with_target(Target::from_index(9)),
-                ],
-            ],
-        ],
-    )?;
-
-    assert_cycles(
-        "[a b]:<1 target>",
-        vec![
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 2))
-                    .with_note(9, 4)
-                    .with_target(Target::from_index(1)),
-                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                    .with_note(11, 4)
-                    .with_target(Target::from_index(1)),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 2))
-                    .with_note(9, 4)
-                    .with_target(Target::from_name("target".into())),
-                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                    .with_note(11, 4)
-                    .with_target(Target::from_name("target".into())),
-            ]],
-        ],
-    )?;
-
-    assert_cycles(
-        "[a:1 b]:<3 4>",
-        vec![
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 2))
-                    .with_note(9, 4)
-                    .with_target(Target::from_index(1)),
-                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                    .with_note(11, 4)
-                    .with_target(Target::from_index(3)),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 2))
-                    .with_note(9, 4)
-                    .with_target(Target::from_index(1)),
-                Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                    .with_note(11, 4)
-                    .with_target(Target::from_index(4)),
-            ]],
-        ],
-    )?;
-
-    assert_eq!(
-        Cycle::from("a:1 b:v0.1:v1.0:p1.0:g100.0")?.generate()?,
-        [[
-            Event::at(Fraction::from(0), Fraction::new(1, 2))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1)),
-            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                .with_note(11, 4)
-                .with_targets(vec![
-                    Target::Named("v".into(), Some(0.1)),
-                    // second v should not be applied
-                    Target::Named("p".into(), Some(1.0)),
-                    Target::Named("g".into(), Some(100.0)),
-                ])
-        ]]
-    );
-
-    // outer instrument values shouldn't override inner ones
-    assert_eq!(
-        Cycle::from("[a:#2 b]:#3")?.generate()?,
-        [[
-            Event::at(Fraction::from(0), Fraction::new(1, 2))
-                .with_note(9, 4)
-                .with_target(Target::from_index(2)),
-            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                .with_note(11, 4)
-                .with_target(Target::from_index(3)),
-        ]]
-    );
-
-    assert_eq!(
-        Cycle::from("a:1:#1 b:#1:1")?.generate()?,
-        [[
-            Event::at(Fraction::from(0), Fraction::new(1, 2))
-                .with_note(9, 4)
-                .with_target(Target::from_index(1)),
-            Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
-                .with_note(11, 4)
-                .with_target(Target::Index(1)),
-        ]]
-    );
 
     assert_eq!(
         Cycle::from("c(3,8,9)")?.generate()?,
@@ -1064,13 +1083,6 @@ fn target_assign() -> Result<(), String> {
             ]],
         ],
     )?;
-
-    assert_cycle_equality(
-        "[1 2 3 4]:v=[0.2 0.3 0.4 p.8]",
-        "[1 2 3 4]:[v0.2 v0.3 v0.4 p.8]",
-    )?;
-
-    assert_cycle_equality("[1 2 3 4]:g=[0.1 10.]", "[1 2 3 4]:[g0.1 g10.]")?;
 
     Ok(())
 }
