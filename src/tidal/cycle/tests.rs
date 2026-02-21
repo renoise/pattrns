@@ -96,6 +96,31 @@ fn variables() -> Result<(), String> {
 }
 
 #[test]
+fn constant_literals() -> Result<(), String> {
+    assert_eq!(
+        Cycle::constant_from("c3")?,
+        Constant::Pitch(Pitch { note: 0, octave: 3 })
+    );
+    assert_eq!(
+        Cycle::constant_from("v0.5")?,
+        Constant::Target(Target::Named("v".into(), Some(0.5)))
+    );
+    assert_eq!(Cycle::constant_from("1.0")?, Constant::Float(1.0));
+    assert_eq!(Cycle::constant_from("3.75")?, Constant::Float(3.75));
+    assert_eq!(Cycle::constant_from("8")?, Constant::Integer(8));
+    assert_eq!(Cycle::constant_from("~")?, Constant::Rest);
+    assert_eq!(Cycle::constant_from("_")?, Constant::Hold);
+    assert_eq!(Cycle::constant_from("name")?, Constant::Name("name".into()));
+
+    assert!(Cycle::constant_from("$param").is_err());
+    assert!(Cycle::constant_from("[1 2 3]").is_err());
+    assert!(Cycle::constant_from("<1 2 3>").is_err());
+    assert!(Cycle::constant_from("{{a b c}}%2").is_err());
+    assert!(Cycle::constant_from("2 _ 3").is_err());
+    Ok(())
+}
+
+#[test]
 fn parse() -> Result<(), String> {
     assert!(Cycle::from("a b c [d").is_err());
     assert!(Cycle::from("a b/ c [d").is_err());

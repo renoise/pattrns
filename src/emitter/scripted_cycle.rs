@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use num_traits::ToPrimitive;
 
@@ -9,9 +9,9 @@ use crate::{
         add_lua_callback_error, note_events_from_value, ContextPlaybackState, LuaCallback,
         LuaTimeoutHook,
     },
-    emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents},
+    emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents, ParameterWithValues},
     BeatTimeBase, Cycle, CycleEvent, CycleValue, Emitter, EmitterEvent, Event, NoteEvent,
-    ParameterSet, RhythmEvent,
+    Parameter, ParameterSet, RhythmEvent,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -26,7 +26,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct ScriptedCycleEmitter {
     cycle: Cycle,
-    parameters: ParameterSet,
+    parameters: Vec<ParameterWithValues>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
     mapping_callback: Option<LuaCallback>,
     timeout_hook: Option<LuaTimeoutHook>,
@@ -135,9 +135,12 @@ impl ScriptedCycleEmitter {
     /// Converts cycle events to note events and flattens channels into note columns.
     fn generate(&mut self) -> Vec<EmitterEvent> {
         // inject parameter values into cycle as variables
-        for parameter_ref in &self.parameters {
+        for (parameter_ref, enum_values) in &self.parameters {
             let parameter = parameter_ref.borrow();
-            self.cycle.set_var(parameter.id(), (&*parameter).into());
+            self.cycle.set_var(
+                parameter.id(),
+                parameter.into_var(enum_values).unwrap_or_default(),
+            );
         }
         // run the cycle event generator
         let events = {
@@ -296,7 +299,7 @@ impl Emitter for ScriptedCycleEmitter {
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
         // store parameters, so we can inject them in generate()
-        self.parameters = parameters.clone();
+        self.parameters = Parameter::set_with_values(&parameters);
         // and pass them to the mapping callback context
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();

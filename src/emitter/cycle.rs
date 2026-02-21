@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::RangeBounds, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ops::RangeBounds, rc::Rc};
 
 type Fraction = num_rational::Rational32;
 
@@ -46,16 +46,35 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 // -------------------------------------------------------------------------------------------------
 
 /// Convert a [`Parameter`] value to a [`CycleValue`].
-impl From<&Parameter> for CycleValue {
-    fn from(value: &Parameter) -> Self {
-        match value.parameter_type() {
-            ParameterType::Boolean => CycleValue::Integer((value.value() >= 0.5) as i32),
-            ParameterType::Float => CycleValue::Float(value.value()),
-            ParameterType::Integer => CycleValue::Integer(value.value().round() as i32),
-            ParameterType::Enum => CycleValue::Name(Rc::from(
-                value.value_strings()[value.value().round() as usize].clone(),
-            )),
+pub type ParameterWithValues = (Rc<RefCell<Parameter>>, Vec<Option<CycleValue>>);
+impl Parameter {
+    pub fn into_var(&self, values: &[Option<CycleValue>]) -> Option<CycleValue> {
+        match self.parameter_type() {
+            ParameterType::Boolean => Some(CycleValue::Integer((self.value() >= 0.5) as i32)),
+            ParameterType::Float => Some(CycleValue::Float(self.value())),
+            ParameterType::Integer => Some(CycleValue::Integer(self.value().round() as i32)),
+            ParameterType::Enum => values[self.value().round() as usize].clone(),
         }
+    }
+
+    pub fn set_with_values(parameters: &ParameterSet) -> Vec<ParameterWithValues> {
+        parameters
+            .iter()
+            .map(|p| {
+                (
+                    Rc::clone(p),
+                    if p.borrow().parameter_type() == ParameterType::Enum {
+                        p.borrow()
+                            .value_strings()
+                            .iter()
+                            .map(|s| Cycle::constant_from(s).ok())
+                            .collect()
+                    } else {
+                        Vec::default()
+                    },
+                )
+            })
+            .collect()
     }
 }
 
@@ -261,7 +280,7 @@ impl CycleNoteEvents {
 #[derive(Clone, Debug)]
 pub struct CycleEmitter {
     cycle: Cycle,
-    parameters: ParameterSet,
+    parameters: Vec<ParameterWithValues>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
 }
 
@@ -324,9 +343,12 @@ impl CycleEmitter {
     /// Converts cycle events to note events and flattens channels into note columns.
     fn generate(&mut self) -> Vec<EmitterEvent> {
         // inject parameter values into the cycle as variables
-        for parameter_ref in &self.parameters {
+        for (parameter_ref, enum_values) in &self.parameters {
             let parameter = parameter_ref.borrow();
-            self.cycle.set_var(parameter.id(), (&*parameter).into());
+            self.cycle.set_var(
+                parameter.id(),
+                parameter.into_var(enum_values).unwrap_or_default(),
+            );
         }
         // run the cycle event generator
         let events = {
@@ -372,7 +394,7 @@ impl Emitter for CycleEmitter {
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
-        self.parameters = parameters;
+        self.parameters = Parameter::set_with_values(&parameters);
     }
 
     fn run(&mut self, _pulse: RhythmEvent, emit_event: bool) -> Option<Vec<EmitterEvent>> {

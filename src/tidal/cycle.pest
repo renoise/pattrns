@@ -39,7 +39,8 @@ name = @{ ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "_")* }
 repeat = { "!" }
 
 /// possible literals for single steps
-single = { hold | rest | chord | target | pitch | number | name | variable }
+constant = _{ hold | rest | chord | target | pitch | number | name } 
+single = { constant | variable }
 
 choice_op = {"|"}
 stack_op = {","}
@@ -83,3 +84,6 @@ section    = _{ ( expression | range | single | repeat | group)+ }
 
 /// the root of the cycle
 mini = { SOI ~ sections? ~ EOI }
+
+/// parser for a single constant
+constant_literal = { SOI ~ constant ~ EOI }

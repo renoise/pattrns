@@ -43,46 +43,52 @@ impl Cycle {
     ///
     /// Returns a parse error, when the given string is not a valid mini notation expression.
     pub fn from(input: &str) -> Result<Self, String> {
-        match CycleParser::parse(Rule::mini, input) {
-            Ok(mut tree) => {
-                if let Some(mini) = tree.next() {
-                    #[cfg(test)]
-                    {
-                        println!("\nTREE");
-                        Self::print_pairs(&mini, 0);
-                    }
-                    let input = input.to_string();
-                    let root = CycleParser::step(mini)?;
-                    let state = CycleState {
-                        events: 0,
-                        iteration: 0,
-                        rng: Xoshiro256PlusPlus::from_seed(rng().random()),
-                    };
-                    let seed = None;
-                    let source = None;
-                    let event_limit = Self::EVENT_LIMIT_DEFAULT;
-                    let vars = None;
-                    let cycle = Self {
-                        input,
-                        seed,
-                        source,
-                        root,
-                        state,
-                        event_limit,
-                        vars,
-                    };
-                    #[cfg(test)]
-                    {
-                        println!("\nCYCLE");
-                        cycle.print();
-                    }
-                    Ok(cycle)
-                } else {
-                    Err("couldn't parse input".to_string())
-                }
+        CycleParser::parse_from_rule(Rule::mini, input).and_then(|root_pair| {
+            let root = CycleParser::step(root_pair)?;
+            let input = input.to_string();
+            let state = CycleState {
+                events: 0,
+                iteration: 0,
+                rng: Xoshiro256PlusPlus::from_seed(rng().random()),
+            };
+            let seed = None;
+            let source = None;
+            let event_limit = Self::EVENT_LIMIT_DEFAULT;
+            let vars = None;
+            let cycle = Self {
+                input,
+                seed,
+                source,
+                root,
+                state,
+                event_limit,
+                vars,
+            };
+            #[cfg(test)]
+            {
+                println!("\nCYCLE");
+                cycle.print();
             }
-            Err(err) => Err(format!("{}", err)),
-        }
+            Ok(cycle)
+        })
+    }
+
+    pub fn constant_from(input: &str) -> Result<Constant, String> {
+        CycleParser::parse_from_rule(Rule::constant_literal, input).and_then(|root| {
+            let string = root.as_str();
+            let single = CycleParser::single(root);
+            if let Ok(single) = single {
+                match single.value {
+                    Value::Constant(constant) => Ok(constant),
+                    _ => Err(format!(
+                        "variable {}found where constant was expected",
+                        string
+                    )),
+                }
+            } else {
+                Err(format!("single constant expected, found {}", string))
+            }
+        })
     }
 
     /// Rebuild/configure a newly created cycle to use the given custom seed.
@@ -123,10 +129,6 @@ impl Cycle {
             vars: Some(vars),
             ..self
         }
-    }
-
-    pub fn update_vars(&mut self, vars: Vars) {
-        self.vars = Some(vars)
     }
 
     pub fn set_var(&mut self, name: &str, constant: Constant) {
@@ -1337,8 +1339,39 @@ impl Events {
 #[grammar = "tidal/cycle.pest"]
 struct CycleParser {}
 
-/// the errors here should be unreachable unless there is a bug in the pest grammar
 impl CycleParser {
+    fn parse_from_rule(rule: Rule, input: &'_ str) -> Result<Pair<'_, Rule>, String> {
+        match Self::parse(rule, input) {
+            Ok(mut tree) => {
+                if let Some(step_pair) = tree.next() {
+                    #[cfg(test)]
+                    {
+                        println!("\nTREE");
+                        Self::print_pairs(&step_pair, 0);
+                    }
+                    Ok(step_pair)
+                } else {
+                    Err("couldn't parse input".to_string())
+                }
+            }
+            Err(err) => Err(format!("{}", err)),
+        }
+    }
+
+    #[cfg(test)]
+    fn print_pairs(pair: &Pair<Rule>, level: usize) {
+        println!(
+            "{} {:?} {:?}",
+            indent_lines(level),
+            pair.as_rule(),
+            pair.as_str()
+        );
+        for p in pair.clone().into_inner() {
+            Self::print_pairs(&p, level + 1)
+        }
+    }
+
+    /// the errors here should be unreachable unless there is a bug in the pest grammar
     /// recursively parse a pair as a Step
     fn step(pair: Pair<Rule>) -> Result<Step, String> {
         match pair.as_rule() {
@@ -1451,7 +1484,7 @@ impl CycleParser {
         pair.clone()
             .into_inner()
             .next()
-            .ok_or_else(|| format!("empty single {}", pair))
+            .ok_or(format!("empty single {}", pair))
             .and_then(|value_pair| {
                 Ok(Single {
                     string: Rc::from(value_pair.as_str()),
@@ -1508,9 +1541,9 @@ impl CycleParser {
             if p.as_rule() == Rule::choice_op {
                 is_choice = true;
             } else if is_choice {
-                let last = choiced_pairs.last_mut().ok_or_else(|| {
-                    "this can never happen as '|' can never start a section".to_string()
-                })?;
+                let last = choiced_pairs
+                    .last_mut()
+                    .ok_or("this can never happen as '|' can never start a section")?;
                 last.push(p);
                 is_choice = false
             } else {
@@ -1636,7 +1669,7 @@ impl CycleParser {
                 let count = stack
                     .first()
                     .map(Vec::len)
-                    .ok_or_else(|| format!("empty stack {:?}", stack))?;
+                    .ok_or(format!("empty stack {:?}", stack))?;
 
                 if stack.len() > 1 && count > 0 {
                     let count = Step::Single(Single {
@@ -1666,7 +1699,7 @@ impl CycleParser {
         let mut inner = pair.clone().into_inner();
         let start_pair = inner
             .next()
-            .ok_or_else(|| format!("empty expression\n{:?}", pair))?;
+            .ok_or(format!("empty expression\n{:?}", pair))?;
         let start = start_pair.as_str().parse::<i32>().map_err(|_| {
             format!(
                 "range expected integer on the left side, got '{}'",
@@ -1674,9 +1707,7 @@ impl CycleParser {
             )
         })?;
 
-        let end_pair = inner
-            .next()
-            .ok_or_else(|| "range expression has no right side".to_string())?;
+        let end_pair = inner.next().ok_or("range expression has no right side")?;
         let end = end_pair.as_str().parse::<i32>().map_err(|_| {
             format!(
                 "range expected integer on the right side, got '{}'",
@@ -1691,12 +1722,12 @@ impl CycleParser {
 
         let steps = inner
             .next()
-            .ok_or_else(|| format!("no steps in bjorklund\n{:?}", op_pair))
+            .ok_or(format!("no steps in bjorklund\n{:?}", op_pair))
             .and_then(Self::step)?;
 
         let pulses = inner
             .next()
-            .ok_or_else(|| format!("no pulse in bjorklund\n{:?}", op_pair))
+            .ok_or(format!("no pulse in bjorklund\n{:?}", op_pair))
             .and_then(Self::step)?;
 
         let rotate = inner.next().map(Self::step).transpose()?;
@@ -1815,7 +1846,7 @@ impl CycleParser {
         let mut left = Self::step(
             inner
                 .next()
-                .ok_or_else(|| format!("empty expression\n{:?}", pair))?,
+                .ok_or(format!("empty expression\n{:?}", pair))?,
         )?;
         // Loop over operators and parameters, creating a nested expression if multiple pairs are present
         for op_pair in inner {
@@ -2287,15 +2318,6 @@ impl Cycle {
     }
 
     #[cfg(test)]
-    fn indent_lines(level: usize) -> String {
-        let mut lines = String::new();
-        for i in 0..level {
-            lines += [" │", " |"][i % 2];
-        }
-        lines
-    }
-
-    #[cfg(test)]
     fn print_steps(step: &Step, level: usize) {
         let name = match step {
             Step::Single(s) => match &s.value {
@@ -2318,22 +2340,9 @@ impl Cycle {
             Step::Degrade(d) => format!("Degrade ? {:?}", d.chance),
             Step::Bjorklund(_b) => format!("Bjorklund {}", ""),
         };
-        println!("{} {}", Self::indent_lines(level), name);
+        println!("{} {}", indent_lines(level), name);
         for step in step.inner_steps() {
             Self::print_steps(step, level + 1)
-        }
-    }
-
-    #[cfg(test)]
-    fn print_pairs(pair: &Pair<Rule>, level: usize) {
-        println!(
-            "{} {:?} {:?}",
-            Self::indent_lines(level),
-            pair.as_rule(),
-            pair.as_str()
-        );
-        for p in pair.clone().into_inner() {
-            Self::print_pairs(&p, level + 1)
         }
     }
 
@@ -2344,6 +2353,15 @@ impl Cycle {
 }
 
 // -------------------------------------------------------------------------------------------------
+
+#[cfg(test)]
+fn indent_lines(level: usize) -> String {
+    let mut lines = String::new();
+    for i in 0..level {
+        lines += [" │", " |"][i % 2];
+    }
+    lines
+}
 
 #[cfg(test)]
 mod tests;
