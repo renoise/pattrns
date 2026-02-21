@@ -288,6 +288,13 @@ pub enum Target {
     Named(Rc<str>, Option<f64>),
 }
 
+/// The kind of target used for target assignments
+#[derive(Clone, Debug, PartialEq)]
+pub enum TargetKind {
+    Index,
+    Named(Rc<str>),
+}
+
 impl Target {
     pub fn equal_key(&self, other: &Self) -> bool {
         match (self, other) {
@@ -346,7 +353,7 @@ impl Step {
             Step::WeightExpression(e) => vec![&e.left],
             Step::ReplicateExpression(e) => vec![&e.left],
             Step::Degrade(e) => vec![&e.step],
-            Step::TargetExpression(e) => vec![&e.left, &e.right],
+            Step::TargetExpression(e) => vec![&e.step, &e.target],
             Step::Bjorklund(b) => {
                 if let Some(rotation) = &b.rotation {
                     vec![&b.left, &b.steps, &b.pulses, &**rotation]
@@ -358,40 +365,6 @@ impl Step {
                 Static::Repeat => vec![],
                 Static::Range(_) => vec![],
             },
-        }
-    }
-
-    fn inner_steps_mut(&mut self) -> Vec<&mut Step> {
-        match self {
-            Step::Single(_s) => vec![],
-            Step::Alternating(a) => a.steps.iter_mut().collect(),
-            Step::Subdivision(sd) => sd.steps.iter_mut().collect(),
-            Step::SpeedExpression(e) => vec![&mut e.left],
-            Step::WeightExpression(e) => vec![&mut e.left],
-            Step::ReplicateExpression(e) => vec![&mut e.left],
-            Step::Choices(cs) => cs.choices.iter_mut().collect(),
-            Step::Polymeter(pm) => pm.steps.as_mut().inner_steps_mut(),
-            Step::Stack(st) => st.stack.iter_mut().collect(),
-            Step::Degrade(e) => vec![&mut e.step],
-            Step::TargetExpression(e) => vec![&mut e.left],
-            Step::Bjorklund(b) => vec![&mut b.left],
-            Step::Static(s) => match s {
-                Static::Repeat => vec![],
-                Static::Range(_) => vec![],
-            },
-        }
-    }
-
-    fn mutate_singles<F>(&mut self, fun: &mut F)
-    where
-        F: FnMut(&mut Single),
-    {
-        match self {
-            Self::Single(s) => fun(s),
-            _ => self
-                .inner_steps_mut()
-                .iter_mut()
-                .for_each(|s| s.mutate_singles(fun)),
         }
     }
 
@@ -463,11 +436,28 @@ impl Value {
             Self::Variable(_) | Self::VariableTarget(_, _) => self.to_constant(vars).to_fraction(),
         }
     }
-    fn to_target(&self, string: &Rc<str>, vars: Option<&Vars>) -> Option<Target> {
+    fn to_target(
+        &self,
+        string: &Rc<str>,
+        kind: Option<&TargetKind>,
+        vars: Option<&Vars>,
+    ) -> Option<Target> {
+        kind.and_then(|kind| self.to_target_with_kind(kind, vars))
+            .or(self.to_target_without_kind(string, vars))
+    }
+    fn to_target_without_kind(&self, string: &Rc<str>, vars: Option<&Vars>) -> Option<Target> {
         match self {
-            Self::Constant(l) => l.to_target(string),
+            Self::Constant(l) => l.to_target_without_kind(string),
             Self::Variable(_) | Self::VariableTarget(_, _) => {
-                self.to_constant(vars).to_target(string)
+                self.to_constant(vars).to_target_without_kind(string)
+            }
+        }
+    }
+    fn to_target_with_kind(&self, kind: &TargetKind, vars: Option<&Vars>) -> Option<Target> {
+        match self {
+            Self::Constant(l) => l.to_target_with_kind(kind),
+            Self::Variable(_) | Self::VariableTarget(_, _) => {
+                self.to_constant(vars).to_target_with_kind(kind)
             }
         }
     }
@@ -609,8 +599,9 @@ struct Degrade {
 
 #[derive(Clone, Debug, PartialEq)]
 struct TargetExpression {
-    left: Box<Step>,
-    right: Box<Step>,
+    step: Box<Step>,
+    kind: Option<TargetKind>,
+    target: Box<Step>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -734,59 +725,59 @@ impl Constant {
         str.parse::<f64>().map_err(|err| err.to_string())
     }
 
-    fn from_float(str: &str) -> Result<Constant, String> {
+    fn from_float(str: &str) -> Result<Self, String> {
         Self::parse_float(str).map(Self::Float)
     }
 
-    fn from_integer(str: &str) -> Result<Constant, String> {
+    fn from_integer(str: &str) -> Result<Self, String> {
         Self::parse_integer(str).map(Self::Integer)
     }
 
     fn to_integer(&self) -> Option<i32> {
         match &self {
-            Constant::Rest => None,
-            Constant::Hold => None,
-            Constant::Integer(i) => Some(*i),
-            Constant::Float(f) => Some(*f as i32),
-            Constant::Pitch(n) => Some(n.midi_note() as i32),
-            Constant::Chord(p, _m) => Some(p.midi_note() as i32),
-            Constant::Target(t) => match t {
+            Self::Rest => None,
+            Self::Hold => None,
+            Self::Integer(i) => Some(*i),
+            Self::Float(f) => Some(*f as i32),
+            Self::Pitch(n) => Some(n.midi_note() as i32),
+            Self::Chord(p, _m) => Some(p.midi_note() as i32),
+            Self::Target(t) => match t {
                 Target::Index(i) => Some(*i),
                 Target::Named(_, v) => v.map(|f| f as i32),
             },
-            Constant::Name(_n) => None,
+            Self::Name(_n) => None,
         }
     }
 
     fn to_float(&self) -> Option<f64> {
         match &self {
-            Constant::Rest => None,
-            Constant::Hold => None,
-            Constant::Integer(i) => Some(*i as f64),
-            Constant::Float(f) => Some(*f),
-            Constant::Pitch(n) => Some(n.midi_note() as f64),
-            Constant::Chord(n, _m) => Some(n.midi_note() as f64),
-            Constant::Target(t) => match t {
+            Self::Float(f) => Some(*f),
+            Self::Integer(i) => Some(*i as f64),
+            Self::Pitch(n) => Some(n.midi_note() as f64),
+            Self::Chord(n, _m) => Some(n.midi_note() as f64),
+            Self::Target(t) => match t {
                 Target::Index(i) => Some(*i as f64),
                 Target::Named(_, v) => *v,
             },
-            Constant::Name(_n) => None,
+            Self::Rest => None,
+            Self::Hold => None,
+            Self::Name(_n) => None,
         }
     }
 
     fn to_chance(&self) -> Option<f64> {
         match &self {
-            Constant::Rest => None,
-            Constant::Hold => None,
-            Constant::Integer(i) => Some((*i as f64).clamp(0.0, 100.0) / 100.0),
-            Constant::Float(f) => Some(f.clamp(0.0, 1.0)),
-            Constant::Pitch(p) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
-            Constant::Chord(p, _m) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
-            Constant::Target(t) => match t {
+            Self::Rest => None,
+            Self::Hold => None,
+            Self::Integer(i) => Some((*i as f64).clamp(0.0, 100.0) / 100.0),
+            Self::Float(f) => Some(f.clamp(0.0, 1.0)),
+            Self::Pitch(p) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
+            Self::Chord(p, _m) => Some((p.midi_note() as f64).clamp(0.0, 128.0) / 128.0),
+            Self::Target(t) => match t {
                 Target::Index(i) => Some(*i as f64),
                 Target::Named(_, v) => v.map(|f| f.clamp(0.0, 1.0)),
             },
-            Constant::Name(_n) => None,
+            Self::Name(_n) => None,
         }
     }
 
@@ -794,17 +785,36 @@ impl Constant {
         self.to_float().and_then(Fraction::from_f64)
     }
 
-    fn to_target(&self, string: &Rc<str>) -> Option<Target> {
+    fn to_target_without_kind(&self, string: &Rc<str>) -> Option<Target> {
         match self {
-            Self::Rest | Constant::Hold => None,
+            Self::Target(t) => Some(t.clone()),
             Self::Integer(i) => Some(Target::from_index(*i)),
             Self::Name(name) => Some(Target::from_name(Rc::clone(name))),
-            Self::Target(t) => Some(t.clone()),
-            Self::Float(_) | Constant::Pitch(_) | Constant::Chord(_, _) => {
+            Self::Float(_) | Self::Pitch(_) | Self::Chord(_, _) => {
                 // pass unexpected values as raw string and let clients deal with conversions or errors
                 Some(Target::from_name(Rc::clone(string)))
             }
+            Self::Rest | Self::Hold => None,
         }
+    }
+
+    fn to_target_with_kind(&self, kind: &TargetKind) -> Option<Target> {
+        match self {
+            // inner targets override outer target
+            Self::Target(t) => Some(t.clone()),
+            // // TODO allow string values for target outputs as per #94
+            // Self::Name(_name) => None,
+            _ => match kind {
+                TargetKind::Index => self.to_integer().map(Target::from_index),
+                TargetKind::Named(name) => self
+                    .to_float()
+                    .map(|f| Target::Named(Rc::clone(name), Some(f))),
+            },
+        }
+    }
+    fn to_target(&self, string: &Rc<str>, kind: Option<&TargetKind>) -> Option<Target> {
+        kind.and_then(|kind| self.to_target_with_kind(kind))
+            .or(self.to_target_without_kind(string))
     }
 }
 
@@ -1338,7 +1348,6 @@ impl CycleParser {
             Rule::alternating => Self::group(pair, Step::alternating),
             Rule::polymeter => Self::polymeter(pair),
             Rule::range => Self::range(pair),
-            Rule::target_assign => Self::target_assign(pair),
             Rule::expression => Self::expression(pair),
             _ => Err(format!(
                 "unexpected rule, this is a bug in the parser\n{:?}",
@@ -1768,11 +1777,35 @@ impl CycleParser {
         let right = op_pair
             .into_inner()
             .next()
-            .ok_or_else(Self::invalid_right_hand)
-            .and_then(Self::step)?;
+            .ok_or_else(Self::invalid_right_hand)?;
+
+        let (kind, target) = match right.as_rule() {
+            Rule::target_assign => {
+                let mut right = right.into_inner();
+
+                let target_name_pair =
+                    right.next().ok_or("error in grammar, missing target key")?;
+                if target_name_pair.as_rule() != Rule::target_name {
+                    return Err("error in grammar, expected target_name".to_string());
+                }
+
+                let p = right.next().ok_or("missing step pattern")?;
+                let mut target_name = target_name_pair.into_inner();
+                if let Some(target_name) = target_name.next() {
+                    // target name was specified
+                    (Some(TargetKind::Named(Rc::from(target_name.as_str()))), p)
+                } else {
+                    // # was used as indexed target
+                    (Some(TargetKind::Index), p)
+                }
+            }
+            _ => (None, right),
+        };
+
         Ok(Step::TargetExpression(TargetExpression {
-            left: Box::new(left),
-            right: Box::new(right),
+            step: Box::new(left),
+            kind,
+            target: Box::new(Self::step(target)?),
         }))
     }
 
@@ -1796,47 +1829,6 @@ impl CycleParser {
             }
         }
         Ok(left)
-    }
-    fn target_assign(pair: Pair<Rule>) -> Result<Step, String> {
-        let mut inner = pair.into_inner();
-
-        let k = inner.next().ok_or("error in grammar, missing target key")?;
-        if k.as_rule() != Rule::target_name {
-            return Err("error in grammar, expected target_name".to_string());
-        }
-
-        let p = inner.next().ok_or("missing step pattern")?;
-        let mut pattern = Self::step(p)?;
-        let mut key = k.into_inner();
-        if let Some(name) = key.next() {
-            pattern.mutate_singles(&mut |single: &mut Single| {
-                if let Some(f) = single.value.to_float(None) {
-                    if !matches!(single.value, Value::Constant(Constant::Target(_))) {
-                        single.value = Value::Constant(Constant::Target(Target::Named(
-                            Rc::from(name.as_str()),
-                            Some(f),
-                        )));
-                    }
-                } else if let Value::Variable(rc) = &single.value {
-                    single.value = Value::VariableTarget(
-                        Rc::clone(rc),
-                        Target::Named(Rc::from(name.as_str()), None),
-                    )
-                }
-            });
-        } else {
-            pattern.mutate_singles(&mut |single: &mut Single| {
-                if let Some(i) = single.value.to_integer(None) {
-                    if !matches!(single.value, Value::Constant(Constant::Target(_))) {
-                        single.value = Value::Constant(Constant::Target(Target::Index(i)));
-                    }
-                } else if let Value::Variable(rc) = &single.value {
-                    single.value = Value::VariableTarget(Rc::clone(rc), Target::Index(0))
-                }
-            });
-        }
-
-        Ok(pattern)
     }
 }
 
@@ -1922,9 +1914,9 @@ impl Cycle {
     }
 
     // overlay two lists of events and apply the targets from the second to the first
-    fn apply_targets(events: &mut [Event], target_events: &[Event]) {
+    fn apply_targets(events: &mut [Event], target_events: &[Event], kind: Option<&TargetKind>) {
         for target_event in target_events.iter() {
-            if let Some(target) = target_event.value.to_target(&target_event.string) {
+            if let Some(target) = target_event.value.to_target(&target_event.string, kind) {
                 for event in events.iter_mut() {
                     if event.span.overlaps(&target_event.span)
                         && !{
@@ -1973,19 +1965,21 @@ impl Cycle {
 
     // generate events from Target expressions
     fn output_with_target(
-        left: &Step,
-        right: &Step,
+        exp: &TargetExpression,
         state: &mut CycleState,
         cycle: u32,
         limit: usize,
         overlap: bool,
         vars: Option<&Vars>,
     ) -> Result<Events, String> {
-        match right {
-            // multiply with single values to avoid generating events
+        let (step, target_kind, target_step) =
+            (exp.step.as_ref(), exp.kind.as_ref(), exp.target.as_ref());
+
+        match target_step {
+            // assign single value to avoid generating events
             Step::Single(single) => {
-                let mut events = Self::output(left, state, cycle, limit, overlap, vars)?;
-                if let Some(target) = single.value.to_target(&single.string, vars) {
+                let mut events = Self::output(step, state, cycle, limit, overlap, vars)?;
+                if let Some(target) = single.value.to_target(&single.string, target_kind, vars) {
                     events.mutate_events(&mut |event: &mut Event| {
                         if !{
                             let this = &event;
@@ -2001,15 +1995,16 @@ impl Cycle {
             _ => {
                 // generate all the events as flat vecs from both the left and right side of the expression
                 let (left_channels, left_span) =
-                    Self::output_flat(left, state, cycle, limit, vars)?;
-                let (target_channels, _) = Self::output_flat(right, state, cycle, limit, vars)?;
+                    Self::output_flat(step, state, cycle, limit, vars)?;
+                let (target_channels, _) =
+                    Self::output_flat(target_step, state, cycle, limit, vars)?;
 
                 // iterate over channels from both sides to create necessary new stacks if the right side is polyphonic
                 let mut channel_events: Vec<Events> = Vec::with_capacity(target_channels.len());
                 for channel in target_channels.into_iter() {
                     for left_channel in left_channels.iter() {
                         let mut cloned_left = left_channel.clone();
-                        Self::apply_targets(&mut cloned_left, &channel);
+                        Self::apply_targets(&mut cloned_left, &channel, target_kind);
                         channel_events.push(Events::Multi(MultiEvents {
                             length: left_span.length(),
                             span: left_span.clone(),
@@ -2221,15 +2216,9 @@ impl Cycle {
                 });
                 out
             }
-            Step::TargetExpression(e) => Self::output_with_target(
-                e.left.as_ref(),
-                e.right.as_ref(),
-                state,
-                cycle,
-                limit,
-                overlap,
-                vars,
-            )?,
+            Step::TargetExpression(e) => {
+                Self::output_with_target(e, state, cycle, limit, overlap, vars)?
+            }
             Step::SpeedExpression(e) => {
                 Self::output_with_speed(e.right.as_ref(), step, state, cycle, limit, overlap, vars)?
             }
