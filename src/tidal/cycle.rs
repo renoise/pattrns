@@ -81,7 +81,7 @@ impl Cycle {
                 match single.value {
                     Value::Constant(constant) => Ok(constant),
                     _ => Err(format!(
-                        "variable {}found where constant was expected",
+                        "variable {:?} found where constant was expected",
                         string
                     )),
                 }
