@@ -1392,7 +1392,7 @@ impl CycleParser {
     fn variable_identifier(pair: Pair<Rule>) -> Result<Rc<str>, String> {
         pair.into_inner()
             .next()
-            .ok_or("error in grammar, missing variable name".to_string())
+            .ok_or_else(|| "error in grammar, missing variable name".to_string())
             .map(|name_pair| Rc::from(name_pair.as_str()))
     }
 
@@ -1405,14 +1405,12 @@ impl CycleParser {
         match pair.as_rule() {
             Rule::variable => Self::variable(pair),
             Rule::target => {
-                let name = pair.as_str().get(0..1).ok_or(format!(
-                    "error in grammar, missing target key in pair\n{:?}",
-                    pair
-                ))?;
-                let value = pair.clone().into_inner().next().ok_or(format!(
-                    "error in grammar, missing target value in pair\n{:?}",
-                    pair
-                ))?;
+                let name = pair.as_str().get(0..1).ok_or_else(|| {
+                    format!("error in grammar, missing target key in pair\n{:?}", pair)
+                })?;
+                let value = pair.clone().into_inner().next().ok_or_else(|| {
+                    format!("error in grammar, missing target value in pair\n{:?}", pair)
+                })?;
 
                 match name.as_bytes() {
                     b"#" => match value.as_rule() {
@@ -1484,7 +1482,7 @@ impl CycleParser {
         pair.clone()
             .into_inner()
             .next()
-            .ok_or(format!("empty single {}", pair))
+            .ok_or_else(|| format!("empty single {}", pair))
             .and_then(|value_pair| {
                 Ok(Single {
                     string: Rc::from(value_pair.as_str()),
@@ -1669,7 +1667,7 @@ impl CycleParser {
                 let count = stack
                     .first()
                     .map(Vec::len)
-                    .ok_or(format!("empty stack {:?}", stack))?;
+                    .ok_or_else(|| format!("empty stack {:?}", stack))?;
 
                 if stack.len() > 1 && count > 0 {
                     let count = Step::Single(Single {
@@ -1699,7 +1697,7 @@ impl CycleParser {
         let mut inner = pair.clone().into_inner();
         let start_pair = inner
             .next()
-            .ok_or(format!("empty expression\n{:?}", pair))?;
+            .ok_or_else(|| format!("empty expression\n{:?}", pair))?;
         let start = start_pair.as_str().parse::<i32>().map_err(|_| {
             format!(
                 "range expected integer on the left side, got '{}'",
@@ -1722,12 +1720,12 @@ impl CycleParser {
 
         let steps = inner
             .next()
-            .ok_or(format!("no steps in bjorklund\n{:?}", op_pair))
+            .ok_or_else(|| format!("no steps in bjorklund\n{:?}", op_pair))
             .and_then(Self::step)?;
 
         let pulses = inner
             .next()
-            .ok_or(format!("no pulse in bjorklund\n{:?}", op_pair))
+            .ok_or_else(|| format!("no pulse in bjorklund\n{:?}", op_pair))
             .and_then(Self::step)?;
 
         let rotate = inner.next().map(Self::step).transpose()?;
@@ -1846,7 +1844,7 @@ impl CycleParser {
         let mut left = Self::step(
             inner
                 .next()
-                .ok_or(format!("empty expression\n{:?}", pair))?,
+                .ok_or_else(|| format!("empty expression\n{:?}", pair))?,
         )?;
         // Loop over operators and parameters, creating a nested expression if multiple pairs are present
         for op_pair in inner {

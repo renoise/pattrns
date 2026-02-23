@@ -39,7 +39,7 @@ name = @{ ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "_")* }
 repeat = { "!" }
 
 /// possible literals for single steps
-constant = _{ hold | rest | chord | target | pitch | number | name } 
+constant = _{ hold | rest | chord | target | pitch | number | name }
 single = { constant | variable }
 
 choice_op = {"|"}
