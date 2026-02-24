@@ -47,35 +47,33 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 // -------------------------------------------------------------------------------------------------
 
 /// Convert a [`Parameter`] value to a [`CycleValue`].
-pub type ParameterWithValues = (Rc<RefCell<Parameter>>, Vec<Option<CycleSubCycle>>);
+pub type ParameterWithValues = (Rc<RefCell<Parameter>>, Vec<CycleSubCycle>);
 impl Parameter {
-    pub fn into_var(&self, values: &[Option<CycleSubCycle>]) -> Option<CycleSubCycle> {
+    pub fn into_var(&self, values: &[CycleSubCycle]) -> CycleSubCycle {
         match self.parameter_type() {
-            ParameterType::Boolean => Some(CycleSubCycle::integer((self.value() >= 0.5) as i32)),
-            ParameterType::Float => Some(CycleSubCycle::float(self.value())),
-            ParameterType::Integer => Some(CycleSubCycle::integer(self.value().round() as i32)),
+            ParameterType::Boolean => CycleSubCycle::integer((self.value() >= 0.5) as i32),
+            ParameterType::Float => CycleSubCycle::float(self.value()),
+            ParameterType::Integer => CycleSubCycle::integer(self.value().round() as i32),
             ParameterType::Enum => values[self.value().round() as usize].clone(),
         }
     }
 
-    pub fn set_with_values(parameters: &ParameterSet) -> Vec<ParameterWithValues> {
-        parameters
-            .iter()
-            .map(|p| {
-                (
-                    Rc::clone(p),
-                    if p.borrow().parameter_type() == ParameterType::Enum {
-                        p.borrow()
-                            .value_strings()
-                            .iter()
-                            .map(|s| CycleSubCycle::from(s).ok())
-                            .collect()
-                    } else {
-                        Vec::default()
-                    },
-                )
-            })
-            .collect()
+    pub fn parse_subcycles(parameters: &ParameterSet) -> Result<Vec<ParameterWithValues>, String> {
+        let mut result = vec![];
+        for p in parameters.iter() {
+            result.push((Rc::clone(p), {
+                if p.borrow().parameter_type() == ParameterType::Enum {
+                    let mut values = vec![];
+                    for string in p.borrow().value_strings().iter() {
+                        values.push(CycleSubCycle::from(string)?)
+                    }
+                    values
+                } else {
+                    Vec::default()
+                }
+            }))
+        }
+        Ok(result)
     }
 }
 
@@ -341,10 +339,8 @@ impl CycleEmitter {
         // inject parameter values into the cycle as variables
         for (parameter_ref, enum_values) in &self.parameters {
             let parameter = parameter_ref.borrow();
-            self.cycle.set_var(
-                parameter.id(),
-                parameter.into_var(enum_values).unwrap_or_default(),
-            );
+            self.cycle
+                .set_var(parameter.id(), parameter.into_var(enum_values));
         }
         // run the cycle event generator
         let events = {
@@ -390,7 +386,13 @@ impl Emitter for CycleEmitter {
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
-        self.parameters = Parameter::set_with_values(&parameters);
+        match Parameter::parse_subcycles(&parameters) {
+            Ok(parameters) => self.parameters = parameters,
+            Err(err) => {
+                // FIX handle this more gracefully?
+                panic!("{err}")
+            }
+        }
     }
 
     fn run(&mut self, _pulse: RhythmEvent, emit_event: bool) -> Option<Vec<EmitterEvent>> {

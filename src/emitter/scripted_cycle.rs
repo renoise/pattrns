@@ -137,10 +137,8 @@ impl ScriptedCycleEmitter {
         // inject parameter values into cycle as variables
         for (parameter_ref, enum_values) in &self.parameters {
             let parameter = parameter_ref.borrow();
-            self.cycle.set_var(
-                parameter.id(),
-                parameter.into_var(enum_values).unwrap_or_default(),
-            );
+            self.cycle
+                .set_var(parameter.id(), parameter.into_var(enum_values));
         }
         // run the cycle event generator
         let events = {
@@ -298,15 +296,25 @@ impl Emitter for ScriptedCycleEmitter {
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
-        // store parameters, so we can inject them in generate()
-        self.parameters = Parameter::set_with_values(&parameters);
-        // and pass them to the mapping callback context
-        if let Some(timeout_hook) = &mut self.timeout_hook {
-            timeout_hook.reset();
-        }
-        if let Some(callback) = &mut self.mapping_callback {
-            if let Err(err) = callback.set_context_parameters(parameters) {
-                callback.handle_error(&err);
+        match Parameter::parse_subcycles(&parameters) {
+            Ok(with_subcycles) => {
+                // store parameters, so we can inject them in generate()
+                self.parameters = with_subcycles;
+
+                // and pass them to the mapping callback context
+                if let Some(timeout_hook) = &mut self.timeout_hook {
+                    timeout_hook.reset();
+                }
+
+                if let Some(callback) = &mut self.mapping_callback {
+                    if let Err(err) = callback.set_context_parameters(parameters) {
+                        callback.handle_error(&err);
+                    }
+                }
+            }
+            Err(err) => {
+                // FIX make error point to the enum def?
+                add_lua_callback_error(None, None, "enum".to_string(), LuaError::RuntimeError(err));
             }
         }
     }
