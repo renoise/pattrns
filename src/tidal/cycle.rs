@@ -171,7 +171,7 @@ impl Cycle {
     /// Check if a cycle may give different outputs between cycles.
     pub fn is_stateful(&self) -> bool {
         // TODO improve: * and / can change the output, <1> does not etc..
-        self.input.contains(['<', '{', '|', '?', '/', '*'])
+        self.input.contains(['<', '{', '|', '?', '/', '*', '$'])
     }
 
     /// When the cycle got created from a script source,
