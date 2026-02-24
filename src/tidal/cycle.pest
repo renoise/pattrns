@@ -78,7 +78,7 @@ op           = _{ op_target | op_degrade | op_replicate | op_weight | op_fast | 
 
 expression   = { (single | group | variable) ~ op+ }
 
-range      = ${ integer ~ ".." ~ integer }
+range      = ${ (integer | variable) ~ ".." ~ (integer | variable) }
 /// helper container that splits steps into sections
 section    = _{ ( expression | range | single | repeat | group | variable )+ }
 

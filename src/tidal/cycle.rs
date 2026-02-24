@@ -374,12 +374,13 @@ enum Step {
     Stack(Stack),
     Choices(Choices),
     SpeedExpression(SpeedExpression),
-    ReplicateExpression(ReplicateExpression),
-    WeightExpression(WeightExpression),
-    TargetExpression(TargetExpression),
-    Degrade(Degrade),
+    Replicated(Replicated),
+    Weighted(Weighted),
+    Targeted(Targeted),
+    Degrade(Degraded),
     Bjorklund(Bjorklund),
     Static(Static),
+    Ranged(Ranged),
 }
 
 impl Default for Step {
@@ -407,10 +408,10 @@ impl Step {
             Step::Choices(cs) => cs.choices.iter().collect(),
             Step::Stack(st) => st.stack.iter().collect(),
             Step::SpeedExpression(e) => vec![&e.step, &e.mult],
-            Step::WeightExpression(e) => vec![&e.step, &e.weight],
-            Step::ReplicateExpression(e) => vec![&e.step, &e.count],
+            Step::Weighted(e) => vec![&e.step, &e.weight],
+            Step::Replicated(e) => vec![&e.step, &e.count],
             Step::Degrade(e) => vec![&e.step, &e.chance],
-            Step::TargetExpression(e) => vec![&e.step, &e.target],
+            Step::Targeted(e) => vec![&e.step, &e.target],
             Step::Bjorklund(b) => {
                 if let Some(rotation) = &b.rotation {
                     vec![&b.left, &b.steps, &b.pulses, &**rotation]
@@ -420,8 +421,8 @@ impl Step {
             }
             Step::Static(s) => match s {
                 Static::Repeat => vec![],
-                Static::Range(_) => vec![],
             },
+            Step::Ranged(r) => vec![&r.start, &r.end],
         }
     }
 
@@ -445,11 +446,11 @@ impl Step {
                 e.step.get_vars(vars);
                 e.mult.get_vars(vars);
             }
-            Step::WeightExpression(e) => {
+            Step::Weighted(e) => {
                 e.step.get_vars(vars);
                 e.weight.get_vars(vars);
             }
-            Step::ReplicateExpression(e) => {
+            Step::Replicated(e) => {
                 e.step.get_vars(vars);
                 e.count.get_vars(vars);
             }
@@ -457,7 +458,7 @@ impl Step {
                 e.step.get_vars(vars);
                 e.chance.get_vars(vars);
             }
-            Step::TargetExpression(e) => {
+            Step::Targeted(e) => {
                 e.step.get_vars(vars);
                 e.target.get_vars(vars);
             }
@@ -467,6 +468,10 @@ impl Step {
                 if let Some(rotation) = &b.rotation {
                     rotation.get_vars(vars);
                 }
+            }
+            Step::Ranged(r) => {
+                r.start.get_vars(vars);
+                r.end.get_vars(vars);
             }
         }
     }
@@ -500,7 +505,6 @@ impl Step {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Static {
-    Range(Range),
     Repeat,
 }
 
@@ -584,25 +588,25 @@ struct SpeedExpression {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct WeightExpression {
+struct Weighted {
     step: Box<Step>,
     weight: Box<Step>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct ReplicateExpression {
+struct Replicated {
     step: Box<Step>,
     count: Box<Step>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Degrade {
+struct Degraded {
     step: Box<Step>,
     chance: Box<Step>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct TargetExpression {
+struct Targeted {
     step: Box<Step>,
     kind: Option<TargetKind>,
     target: Box<Step>,
@@ -617,9 +621,9 @@ struct Bjorklund {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Range {
-    start: i32,
-    end: i32,
+struct Ranged {
+    start: Box<Step>,
+    end: Box<Step>,
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1432,7 +1436,7 @@ impl CycleParser {
             .into_inner()
             .next()
             .map(|variable_pair| {
-                Ok(Step::TargetExpression(TargetExpression {
+                Ok(Step::Targeted(Targeted {
                     step: Box::new(Step::Single(Single {
                         value: Constant::Null,
                         string: Rc::clone(&name),
@@ -1548,19 +1552,6 @@ impl CycleParser {
                 Static::Repeat => {
                     let repeat = steps.last().cloned().unwrap_or(Step::rest());
                     steps.push(repeat)
-                }
-                Static::Range(r) => {
-                    let range = if r.start <= r.end {
-                        Box::new(r.start..=r.end) as Box<dyn Iterator<Item = i32>>
-                    } else {
-                        Box::new((r.end..=r.start).rev()) as Box<dyn Iterator<Item = i32>>
-                    };
-                    for i in range {
-                        steps.push(Step::Single(Single {
-                            value: Constant::Integer(i),
-                            string: Rc::from(i.to_string()),
-                        }))
-                    }
                 }
             },
             _ => steps.push(step),
@@ -1743,26 +1734,37 @@ impl CycleParser {
         }
     }
 
+    fn integer_or_variable(pair: Pair<Rule>) -> Result<Step, String> {
+        match pair.as_rule() {
+            Rule::integer => Ok(Step::constant(
+                Constant::Integer(pair.as_str().parse::<i32>().map_err(|_| {
+                    format!(
+                        "error in grammar, integer cannot be parsed '{}'",
+                        pair.as_str()
+                    )
+                })?),
+                Some(pair.as_str()),
+            )),
+            Rule::variable => Self::variable(pair),
+            _ => Err("error in grammar".to_string()),
+        }
+    }
+
     fn range(pair: Pair<Rule>) -> Result<Step, String> {
         let mut inner = pair.clone().into_inner();
+
         let start_pair = inner
             .next()
-            .ok_or_else(|| format!("empty expression\n{:?}", pair))?;
-        let start = start_pair.as_str().parse::<i32>().map_err(|_| {
-            format!(
-                "range expected integer on the left side, got '{}'",
-                start_pair.as_str()
-            )
-        })?;
+            .ok_or_else(|| format!("error in grammar, empty range expression\n{:?}", pair))?;
 
-        let end_pair = inner.next().ok_or("range expression has no right side")?;
-        let end = end_pair.as_str().parse::<i32>().map_err(|_| {
-            format!(
-                "range expected integer on the right side, got '{}'",
-                end_pair.as_str()
-            )
-        })?;
-        Ok(Step::Static(Static::Range(Range { start, end })))
+        let end_pair = inner
+            .next()
+            .ok_or("error in grammar, incomplete range expression")?;
+
+        Ok(Step::Ranged(Ranged {
+            start: Box::new(Self::integer_or_variable(start_pair)?),
+            end: Box::new(Self::integer_or_variable(end_pair)?),
+        }))
     }
 
     fn bjorklund(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
@@ -1812,7 +1814,7 @@ impl CycleParser {
             Step::constant(Constant::Float(2.0), Some("2.0"))
         })?;
 
-        Ok(Step::WeightExpression(WeightExpression {
+        Ok(Step::Weighted(Weighted {
             step: Box::new(left),
             weight: Box::new(weight),
         }))
@@ -1823,7 +1825,7 @@ impl CycleParser {
             Step::constant(Constant::Float(2.0), Some("2.0"))
         })?;
 
-        Ok(Step::ReplicateExpression(ReplicateExpression {
+        Ok(Step::Replicated(Replicated {
             step: Box::new(left),
             count: Box::new(count),
         }))
@@ -1834,7 +1836,7 @@ impl CycleParser {
             Step::constant(Constant::Float(0.5), Some("0.5"))
         })?;
 
-        Ok(Step::Degrade(Degrade {
+        Ok(Step::Degrade(Degraded {
             step: Box::new(step),
             chance: Box::new(chance),
         }))
@@ -1882,7 +1884,7 @@ impl CycleParser {
             _ => (None, right),
         };
 
-        Ok(Step::TargetExpression(TargetExpression {
+        Ok(Step::Targeted(Targeted {
             step: Box::new(left),
             kind,
             target: Box::new(Self::step(target)?),
@@ -1999,7 +2001,7 @@ impl Cycle {
                     let mut a = Fraction::ZERO;
                     for v in s.steps.iter() {
                         let inner_length = match v {
-                            Step::ReplicateExpression(re) => Self::step_length(
+                            Step::Replicated(re) => Self::step_length(
                                 re.count.as_ref(),
                                 state,
                                 cycle,
@@ -2093,7 +2095,7 @@ impl Cycle {
 
     // generate events from Target expressions
     fn output_with_target(
-        exp: &TargetExpression,
+        exp: &Targeted,
         state: &mut CycleState,
         cycle: u32,
         limit: usize,
@@ -2274,7 +2276,7 @@ impl Cycle {
                     })
                 }
             }
-            Step::WeightExpression(we) => {
+            Step::Weighted(we) => {
                 let weight = Self::output(we.weight.as_ref(), state, cycle, limit, overlap, vars)?
                     .first()
                     .and_then(|e| e.value.to_fraction())
@@ -2285,7 +2287,7 @@ impl Cycle {
                 events.set_length(weight);
                 events
             }
-            Step::ReplicateExpression(we) => {
+            Step::Replicated(we) => {
                 let count = Self::output(we.count.as_ref(), state, cycle, limit, overlap, vars)?
                     .first()
                     .and_then(|e| e.value.to_float())
@@ -2298,7 +2300,7 @@ impl Cycle {
                 let steps = vec![we.step.as_ref().clone(); len];
                 let sub = Step::subdivision(steps);
 
-                // TODO cache this if the right side is static
+                // PERF cache this if the right side is static
                 let step = Step::SpeedExpression(SpeedExpression {
                     op: SpeedOp::Fast(),
                     step: Box::from(sub),
@@ -2369,9 +2371,7 @@ impl Cycle {
                 });
                 out
             }
-            Step::TargetExpression(e) => {
-                Self::output_with_target(e, state, cycle, limit, overlap, vars)?
-            }
+            Step::Targeted(e) => Self::output_with_target(e, state, cycle, limit, overlap, vars)?,
             Step::SpeedExpression(e) => {
                 Self::output_with_speed(e.mult.as_ref(), step, state, cycle, limit, overlap, vars)?
             }
@@ -2421,6 +2421,42 @@ impl Cycle {
                 // Range and Expression should be applied in Self::push_applied
                 Events::empty()
             }
+            Step::Ranged(r) => {
+                let start = Self::output(r.start.as_ref(), state, cycle, limit, overlap, vars)?
+                    .first()
+                    .and_then(|e| e.value.to_integer())
+                    .unwrap_or(0);
+                let end = Self::output(r.end.as_ref(), state, cycle, limit, overlap, vars)?
+                    .first()
+                    .and_then(|e| e.value.to_integer())
+                    .unwrap_or(0);
+
+                let length = (start - end).abs();
+                let range = if start <= end {
+                    Box::new(start..=end) as Box<dyn Iterator<Item = i32>>
+                } else {
+                    Box::new((end..=start).rev()) as Box<dyn Iterator<Item = i32>>
+                };
+
+                // PERF cache this if the range is static
+                let step = Step::Weighted(Weighted {
+                    weight: Box::new(Step::constant(Constant::Integer(length), None)),
+                    step: Box::new(Step::Subdivision(Subdivision {
+                        steps: {
+                            let mut steps = vec![];
+                            for i in range {
+                                steps.push(Step::Single(Single {
+                                    value: Constant::Integer(i),
+                                    string: Rc::from(i.to_string()),
+                                }))
+                            }
+                            steps
+                        },
+                    })),
+                });
+
+                Self::output(&step, state, cycle, limit, overlap, vars)?
+            }
         };
         Ok(events)
     }
@@ -2439,15 +2475,15 @@ impl Cycle {
             Step::Choices(cs) => format!("Choices |{}|", cs.choices.len()),
             Step::Stack(st) => format!("Stack ({})", st.stack.len()),
             Step::SpeedExpression(e) => format!("Speed Expression {:?}", e.op),
-            Step::WeightExpression(we) => format!("Weight Expression {:?}", we.weight),
-            Step::ReplicateExpression(we) => format!("Replicate Expression {:?}", we.count),
-            Step::TargetExpression(e) => format!("Target Expression {:?}", e.kind),
+            Step::Weighted(we) => format!("Weight Expression {:?}", we.weight),
+            Step::Replicated(we) => format!("Replicate Expression {:?}", we.count),
+            Step::Targeted(e) => format!("Target Expression {:?}", e.kind),
             Step::Static(s) => match s {
                 Static::Repeat => "Repeat".to_string(),
-                Static::Range(r) => format!("Range {}..{}", r.start, r.end),
             },
             Step::Degrade(d) => format!("Degrade ? {:?}", d.chance),
             Step::Bjorklund(_b) => format!("Bjorklund {}", ""),
+            Step::Ranged(_) => "Ranged".to_string(),
         };
         println!("{} {}", indent_lines(level), name);
         for step in step.inner_steps() {
