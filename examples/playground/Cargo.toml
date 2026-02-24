@@ -19,4 +19,4 @@ serde_json = { version = "^1.0" }
 
 [patch.crates-io]
 # custom patched version with pthread support
-lua-src = { git = 'https://github.com/emuell/lua-src-rs', tag = "mlua_v0.11.3" }
+lua-src = { git = 'https://github.com/emuell/lua-src-rs', tag = "mlua_v0.11.6" }
