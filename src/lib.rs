@@ -60,7 +60,7 @@ pub use crate::{
     sequence::Sequence,
     tidal::{
         Constant as CycleValue, Cycle, Event as CycleEvent, Span as CycleSpan,
-        Target as CycleTarget,
+        SubCycle as CycleSubCycle, Target as CycleTarget,
     },
     time::{
         BeatTimeBase, BeatTimeStep, ExactSampleTime, SampleTime, SampleTimeBase, SampleTimeDisplay,

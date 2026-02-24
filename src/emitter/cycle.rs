@@ -3,9 +3,9 @@ use std::{cell::RefCell, collections::HashMap, ops::RangeBounds, rc::Rc};
 type Fraction = num_rational::Rational32;
 
 use crate::{
-    event::new_note, BeatTimeBase, Chord, Cycle, CycleEvent, CycleTarget, CycleValue, Emitter,
-    EmitterEvent, Event, InstrumentId, Note, NoteEvent, Parameter, ParameterSet, ParameterType,
-    RhythmEvent,
+    event::new_note, BeatTimeBase, Chord, Cycle, CycleEvent, CycleSubCycle, CycleTarget,
+    CycleValue, Emitter, EmitterEvent, Event, InstrumentId, Note, NoteEvent, Parameter,
+    ParameterSet, ParameterType, RhythmEvent,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -18,6 +18,7 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 
     fn try_from(value: &CycleValue) -> Result<Self, String> {
         match value {
+            CycleValue::Null => Ok(vec![None]),
             CycleValue::Hold => Ok(vec![None]),
             CycleValue::Rest => Ok(vec![new_note(Note::OFF)]),
             CycleValue::Float(_f) => Ok(vec![None]),
@@ -46,13 +47,13 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 // -------------------------------------------------------------------------------------------------
 
 /// Convert a [`Parameter`] value to a [`CycleValue`].
-pub type ParameterWithValues = (Rc<RefCell<Parameter>>, Vec<Option<CycleValue>>);
+pub type ParameterWithValues = (Rc<RefCell<Parameter>>, Vec<Option<CycleSubCycle>>);
 impl Parameter {
-    pub fn into_var(&self, values: &[Option<CycleValue>]) -> Option<CycleValue> {
+    pub fn into_var(&self, values: &[Option<CycleSubCycle>]) -> Option<CycleSubCycle> {
         match self.parameter_type() {
-            ParameterType::Boolean => Some(CycleValue::Integer((self.value() >= 0.5) as i32)),
-            ParameterType::Float => Some(CycleValue::Float(self.value())),
-            ParameterType::Integer => Some(CycleValue::Integer(self.value().round() as i32)),
+            ParameterType::Boolean => Some(CycleSubCycle::integer((self.value() >= 0.5) as i32)),
+            ParameterType::Float => Some(CycleSubCycle::float(self.value())),
+            ParameterType::Integer => Some(CycleSubCycle::integer(self.value().round() as i32)),
             ParameterType::Enum => values[self.value().round() as usize].clone(),
         }
     }
@@ -67,7 +68,7 @@ impl Parameter {
                         p.borrow()
                             .value_strings()
                             .iter()
-                            .map(|s| Cycle::constant_from(s).ok())
+                            .map(|s| CycleSubCycle::from(s).ok())
                             .collect()
                     } else {
                         Vec::default()
@@ -81,27 +82,19 @@ impl Parameter {
 // -------------------------------------------------------------------------------------------------
 
 // Conversion helpers for cycle targets
-fn float_value_in_range<Range>(
-    maybe_float: &Option<f64>,
-    name: &'static str,
-    range: Range,
-) -> Result<f32, String>
+fn float_value_in_range<Range>(float: &f64, name: &'static str, range: Range) -> Result<f32, String>
 where
     Range: RangeBounds<f32> + std::fmt::Debug,
 {
-    maybe_float
-        .map(|v| v as f32)
-        .ok_or_else(|| format!("{} property must be a number value", name))
-        .and_then(|v| {
-            if range.contains(&v) {
-                Ok(v)
-            } else {
-                Err(format!(
-                    "{} property must be in range [{:?}] but is '{}'",
-                    name, range, v
-                ))
-            }
-        })
+    let v = *float as f32;
+    if range.contains(&v) {
+        Ok(v)
+    } else {
+        Err(format!(
+            "{} property must be in range [{:?}] but is '{}'",
+            name, range, v
+        ))
+    }
 }
 
 fn integer_value_in_range<Range>(
@@ -141,7 +134,7 @@ pub(crate) fn apply_cycle_note_properties(
                     note_event.instrument = Some(instrument);
                 }
             }
-            CycleTarget::Named(name, value) => match name.as_bytes() {
+            CycleTarget::NamedFloat(name, value) => match name.as_bytes() {
                 b"v" => {
                     let volume = float_value_in_range(value, "volume", 0.0..=1.0)?;
                     for note_event in note_events.iter_mut().flatten() {
@@ -174,6 +167,9 @@ pub(crate) fn apply_cycle_note_properties(
                             + "prefixes here.");
                 }
             },
+            CycleTarget::Named(name) => {
+                return Err(format!("{} property must be a number value", name))
+            }
         }
     }
     Ok(())

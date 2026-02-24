@@ -53,30 +53,30 @@ fn weight_and_replicate() -> Result<(), String> {
 
 #[test]
 fn variables() -> Result<(), String> {
-    let note = Constant::Pitch(Pitch { note: 0, octave: 4 });
+    let note = SubCycle::from("e4")?;
     let mut cycle = Cycle::from("a b $note d")?;
     cycle.set_var("note", note);
-    assert_eq!(cycle.generate(), Cycle::from("a b c d")?.generate());
+    assert_eq!(cycle.generate(), Cycle::from("a b e4 d")?.generate());
 
     // unset variables convert into named
-    let mut cycle = Cycle::from("a b $note d")?;
-    assert_eq!(cycle.generate(), Cycle::from("a b note d")?.generate());
+    let mut cycle = Cycle::from("a $note")?;
+    assert_eq!(cycle.generate(), Cycle::from("a note")?.generate());
 
     let index = Constant::Integer(12);
     let mut cycle = Cycle::from("a:$index")?;
-    cycle.set_var("index", index);
+    cycle.set_var_constant("index", index);
     assert_eq!(cycle.generate(), Cycle::from("a:12")?.generate());
 
-    let float = Constant::Float(0.9);
-    let mut cycle = Cycle::from("a:p$float")?;
-    cycle.set_var("float", float);
-    assert_eq!(cycle.generate(), Cycle::from("a:p0.9")?.generate());
+    let sub = SubCycle::from("1 2")?;
+    let mut cycle = Cycle::from("a*$sub")?;
+    cycle.set_var("sub", sub);
+    assert_eq!(cycle.generate(), Cycle::from("a*[1 2]")?.generate());
 
     let f1 = Constant::Float(0.5);
     let f2 = Constant::Float(0.9);
     let mut cycle = Cycle::from("[a b c d]:p=[$f1 $f2]")?;
-    cycle.set_var("f1", f1);
-    cycle.set_var("f2", f2);
+    cycle.set_var_constant("f1", f1);
+    cycle.set_var_constant("f2", f2);
     assert_eq!(
         cycle.generate(),
         Cycle::from("[a b c d]:p=[0.5 0.9]")?.generate()
@@ -84,14 +84,23 @@ fn variables() -> Result<(), String> {
 
     let mult = Constant::Float(2.0);
     let mut cycle = Cycle::from("a*$mult")?;
-    cycle.set_var("mult", mult);
+    cycle.set_var_constant("mult", mult);
     assert_eq!(cycle.generate(), Cycle::from("a*2")?.generate());
 
     let length = Constant::Float(3.0);
     let mut cycle = Cycle::from("a@$length b")?;
-    cycle.set_var("length", length);
+    cycle.set_var_constant("length", length);
     assert_eq!(cycle.generate(), Cycle::from("a@3 b")?.generate());
 
+    let float = Constant::Float(0.9);
+    let mut cycle = Cycle::from("a:p$float")?;
+    cycle.set_var_constant("float", float);
+    assert_eq!(cycle.generate(), Cycle::from("a:p0.9")?.generate());
+
+    assert!(SubCycle::from("a b c d").is_ok());
+    assert!(SubCycle::from("[a b c d]*$mult").is_err());
+    assert!(SubCycle::from("$note $note $note").is_err());
+    assert!(SubCycle::from("a:p=<0.5 0.2 $right>").is_err());
     Ok(())
 }
 
@@ -103,7 +112,7 @@ fn constant_literals() -> Result<(), String> {
     );
     assert_eq!(
         Cycle::constant_from("v0.5")?,
-        Constant::Target(Target::Named("v".into(), Some(0.5)))
+        Constant::Target(Target::named_float("v", 0.5))
     );
     assert_eq!(Cycle::constant_from("1.0")?, Constant::Float(1.0));
     assert_eq!(Cycle::constant_from("3.75")?, Constant::Float(3.75));
@@ -152,7 +161,7 @@ fn targets() -> Result<(), String> {
         Cycle::from("a:v=0.5")?.generate()?,
         [[Event::at(Fraction::from(0), Fraction::new(1, 1))
             .with_note(9, 4)
-            .with_target(Target::Named("v".into(), Some(0.5)))]]
+            .with_target(Target::named_float("v", 0.5))]]
     );
 
     assert_eq!(
@@ -418,10 +427,10 @@ fn targets() -> Result<(), String> {
             Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                 .with_note(11, 4)
                 .with_targets(vec![
-                    Target::Named("v".into(), Some(0.1)),
+                    Target::named_float("v", 0.1),
                     // second v should not be applied
-                    Target::Named("p".into(), Some(1.0)),
-                    Target::Named("g".into(), Some(100.0)),
+                    Target::named_float("p", 1.0),
+                    Target::named_float("g", 100.0),
                 ])
         ]]
     );
@@ -925,26 +934,26 @@ fn expression_chains() -> Result<(), String> {
             vec![vec![Event::at(Fraction::from(0), Fraction::from(1))
                 .with_note(9, 4)
                 .with_targets(vec![
-                    Target::Named("p".into(), Some(0.5)),
-                    Target::Named("v".into(), Some(0.1)),
+                    Target::named_float("p", 0.5),
+                    Target::named_float("v", 0.1),
                 ])]],
             vec![vec![Event::at(Fraction::from(0), Fraction::from(1))
                 .with_note(11, 4)
                 .with_targets(vec![
-                    Target::Named("p".into(), Some(0.5)),
-                    Target::Named("v".into(), Some(0.1)),
+                    Target::named_float("p", 0.5),
+                    Target::named_float("v", 0.1),
                 ])]],
             vec![vec![Event::at(Fraction::from(0), Fraction::from(1))
                 .with_note(0, 4)
                 .with_targets(vec![
-                    Target::Named("v".into(), Some(0.2)),
-                    Target::Named("p".into(), Some(0.5)),
+                    Target::named_float("v", 0.2),
+                    Target::named_float("p", 0.5),
                 ])]],
             vec![vec![Event::at(Fraction::from(0), Fraction::from(1))
                 .with_note(2, 4)
                 .with_targets(vec![
-                    Target::Named("p".into(), Some(0.5)),
-                    Target::Named("v".into(), Some(0.3)),
+                    Target::named_float("p", 0.5),
+                    Target::named_float("v", 0.3),
                 ])]],
         ],
     )?;
@@ -1001,16 +1010,16 @@ fn target_assign() -> Result<(), String> {
         [[
             Event::at(Fraction::from(0), Fraction::new(1, 4))
                 .with_int(1)
-                .with_target(Target::Named("p".into(), Some(0.1))),
+                .with_target(Target::named_float("p", 0.1)),
             Event::at(Fraction::new(1, 4), Fraction::new(1, 4))
                 .with_int(2)
-                .with_target(Target::Named("p".into(), Some(0.2))),
+                .with_target(Target::named_float("p", 0.2)),
             Event::at(Fraction::new(2, 4), Fraction::new(1, 4))
                 .with_int(3)
-                .with_target(Target::Named("p".into(), Some(0.3))),
+                .with_target(Target::named_float("p", 0.3)),
             Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                 .with_int(4)
-                .with_target(Target::Named("p".into(), Some(0.4))),
+                .with_target(Target::named_float("p", 0.4)),
         ]]
     );
     assert_eq!(
@@ -1036,14 +1045,14 @@ fn target_assign() -> Result<(), String> {
         [[
             Event::at(Fraction::from(0), Fraction::new(1, 4))
                 .with_int(1)
-                .with_target(Target::Named("long".into(), Some(1.0))),
+                .with_target(Target::named_float("long", 1.0)),
             Event::at(Fraction::new(1, 4), Fraction::new(1, 4))
                 .with_int(2)
-                .with_target(Target::Named("long".into(), Some(1.0))),
+                .with_target(Target::named_float("long", 1.0)),
             Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(3),
             Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
                 .with_int(4)
-                .with_target(Target::Named("long".into(), Some(0.2))),
+                .with_target(Target::named_float("long", 0.2)),
         ]]
     );
 
@@ -1054,56 +1063,56 @@ fn target_assign() -> Result<(), String> {
                 Event::at(Fraction::from(0), Fraction::new(1, 2))
                     .with_int(1)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.1)),
-                        Target::Named("v".into(), Some(0.3)),
+                        Target::named_float("d", 0.1),
+                        Target::named_float("v", 0.3),
                     ]),
                 Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                     .with_int(2)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.1)),
-                        Target::Named("v".into(), Some(0.3)),
+                        Target::named_float("d", 0.1),
+                        Target::named_float("v", 0.3),
                     ]),
             ]],
             vec![vec![
                 Event::at(Fraction::from(0), Fraction::new(1, 2))
                     .with_int(3)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.2)),
-                        Target::Named("v".into(), Some(0.3)),
+                        Target::named_float("d", 0.2),
+                        Target::named_float("v", 0.3),
                     ]),
                 Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                     .with_int(4)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.2)),
-                        Target::Named("v".into(), Some(0.2)),
+                        Target::named_float("d", 0.2),
+                        Target::named_float("v", 0.2),
                     ]),
             ]],
             vec![vec![
                 Event::at(Fraction::from(0), Fraction::new(1, 2))
                     .with_int(5)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.3)),
-                        Target::Named("v".into(), Some(0.2)),
+                        Target::named_float("d", 0.3),
+                        Target::named_float("v", 0.2),
                     ]),
                 Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                     .with_int(6)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.3)),
-                        Target::Named("v".into(), Some(0.2)),
+                        Target::named_float("d", 0.3),
+                        Target::named_float("v", 0.2),
                     ]),
             ]],
             vec![vec![
                 Event::at(Fraction::from(0), Fraction::new(1, 2))
                     .with_int(7)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.4)),
-                        Target::Named("v".into(), Some(0.1)),
+                        Target::named_float("d", 0.4),
+                        Target::named_float("v", 0.1),
                     ]),
                 Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                     .with_int(8)
                     .with_targets(vec![
-                        Target::Named("d".into(), Some(0.4)),
-                        Target::Named("v".into(), Some(0.1)),
+                        Target::named_float("d", 0.4),
+                        Target::named_float("v", 0.1),
                     ]),
             ]],
         ],
