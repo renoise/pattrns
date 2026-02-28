@@ -157,17 +157,6 @@ impl Cycle {
         }
     }
 
-    #[cfg(test)]
-    fn set_var_constant(&mut self, name: &str, constant: Constant) {
-        if let Some(vars) = self.vars.as_mut() {
-            vars.insert(name.into(), Step::constant(constant, Some(name)));
-        } else {
-            let mut vars = HashMap::new();
-            vars.insert(name.into(), Step::constant(constant, Some(name)));
-            self.vars = Some(vars);
-        }
-    }
-
     /// Check if a cycle may give different outputs between cycles.
     pub fn is_stateful(&self) -> bool {
         // TODO improve: * and / can change the output, <1> does not etc..
@@ -368,7 +357,6 @@ impl Pitch {
 enum Step {
     Var(Rc<str>),
     Single(Single),
-    Alternating(Alternating),
     Subdivision(Subdivision),
     Polymeter(Polymeter),
     Stack(Stack),
@@ -379,8 +367,8 @@ enum Step {
     Targeted(Targeted),
     Degrade(Degraded),
     Bjorklund(Bjorklund),
-    Static(Static),
     Ranged(Ranged),
+    Repeat,
 }
 
 impl Default for Step {
@@ -402,14 +390,13 @@ impl Step {
         match self {
             Step::Var(_) => vec![],
             Step::Single(_s) => vec![],
-            Step::Alternating(a) => a.steps.iter().collect(),
-            Step::Polymeter(pm) => pm.steps.as_ref().inner_steps(),
+            Step::Polymeter(p) => p.stack.iter().collect(),
             Step::Subdivision(sd) => sd.steps.iter().collect(),
             Step::Choices(cs) => cs.choices.iter().collect(),
             Step::Stack(st) => st.stack.iter().collect(),
             Step::SpeedExpression(e) => vec![&e.step, &e.mult],
             Step::Weighted(e) => vec![&e.step, &e.weight],
-            Step::Replicated(e) => vec![&e.step, &e.count],
+            Step::Replicated(e) => vec![&e.step, &e.repeats],
             Step::Degrade(e) => vec![&e.step, &e.chance],
             Step::Targeted(e) => vec![&e.step, &e.target],
             Step::Bjorklund(b) => {
@@ -419,10 +406,8 @@ impl Step {
                     vec![&b.left, &b.steps, &b.pulses]
                 }
             }
-            Step::Static(s) => match s {
-                Static::Repeat => vec![],
-            },
             Step::Ranged(r) => vec![&r.start, &r.end],
+            Step::Repeat => vec![],
         }
     }
 
@@ -432,12 +417,11 @@ impl Step {
                 vars.insert(Rc::clone(name));
             }
             Step::Single(_s) => (),
-            Step::Static(_s) => (),
-            Step::Alternating(a) => a.steps.iter().for_each(|s| s.get_vars(vars)),
-
             Step::Polymeter(pm) => {
-                pm.count.get_vars(vars);
-                pm.steps.get_vars(vars);
+                pm.stack.iter().for_each(|s| s.get_vars(vars));
+                if let Some(c) = pm.count.as_ref() {
+                    c.get_vars(vars)
+                }
             }
             Step::Subdivision(sd) => sd.steps.iter().for_each(|s| s.get_vars(vars)),
             Step::Choices(cs) => cs.choices.iter().for_each(|s| s.get_vars(vars)),
@@ -452,7 +436,7 @@ impl Step {
             }
             Step::Replicated(e) => {
                 e.step.get_vars(vars);
-                e.count.get_vars(vars);
+                e.repeats.get_vars(vars);
             }
             Step::Degrade(e) => {
                 e.step.get_vars(vars);
@@ -473,6 +457,7 @@ impl Step {
                 r.start.get_vars(vars);
                 r.end.get_vars(vars);
             }
+            Step::Repeat => (),
         }
     }
 
@@ -489,23 +474,21 @@ impl Step {
         })
     }
 
-    fn subdivision(steps: Vec<Step>) -> Self {
+    fn subdivision(steps: Vec<Self>) -> Self {
         Self::Subdivision(Subdivision { steps })
     }
-    fn alternating(steps: Vec<Step>) -> Self {
-        Self::Alternating(Alternating { steps })
+    fn alternating(steps: Vec<Self>) -> Self {
+        Self::polymeter(
+            vec![steps],
+            Some(Self::constant(Constant::Integer(1), None)),
+        )
     }
-    fn polymeter(steps: Vec<Step>, count: Step) -> Self {
-        Step::Polymeter(Polymeter {
-            steps: Box::new(Step::subdivision(steps)),
-            count: Box::new(count),
+    fn polymeter(stack: Vec<Vec<Self>>, count: Option<Self>) -> Self {
+        Self::Polymeter(Polymeter {
+            stack: stack.into_iter().map(Self::subdivision).collect(),
+            count: count.map(Box::new),
         })
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum Static {
-    Repeat,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -524,19 +507,15 @@ impl Default for Single {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Alternating {
-    steps: Vec<Step>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 struct Subdivision {
     steps: Vec<Step>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct Polymeter {
-    count: Box<Step>,
-    steps: Box<Step>,
+    // a list of exclusively Subdivision steps
+    stack: Vec<Step>,
+    count: Option<Box<Step>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -553,6 +532,7 @@ struct Stack {
 enum SpeedOp {
     Fast(), // *
     Slow(), // /
+    Fit(Fraction),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -596,7 +576,7 @@ struct Weighted {
 #[derive(Clone, Debug, PartialEq)]
 struct Replicated {
     step: Box<Step>,
-    count: Box<Step>,
+    repeats: Box<Step>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1037,11 +1017,27 @@ impl Events {
         })
     }
 
-    fn maybe_poly(poly: PolyEvents) -> Self {
-        if poly.channels.len() == 1 {
-            poly.channels.into_iter().next().expect("len is 1")
-        } else {
-            Self::Poly(poly)
+    fn collapsed_poly(events: Vec<Events>, length: Fraction, span: Span) -> Self {
+        match events.len() {
+            0 => Self::empty(),
+            1 => events.first().expect("len is 1").to_owned(),
+            _ => Self::Poly(PolyEvents {
+                length,
+                span,
+                channels: events,
+            }),
+        }
+    }
+
+    fn collapsed_multi(events: Vec<Events>, length: Fraction, span: Span) -> Self {
+        match events.len() {
+            0 => Self::empty(),
+            1 => events.first().expect("len is 1").to_owned(),
+            _ => Self::Multi(MultiEvents {
+                span,
+                length,
+                events,
+            }),
         }
     }
 
@@ -1318,7 +1314,6 @@ impl Events {
 
         #[cfg(test)]
         {
-            self.print(0);
             println!("\nOUTPUT");
             let channel_count = channels.len();
             for (ci, channel) in channels.iter().enumerate() {
@@ -1332,32 +1327,6 @@ impl Events {
         }
 
         channels
-    }
-
-    #[cfg(test)]
-    fn print(&self, depth: usize) {
-        let indent = " ".repeat(depth * 2);
-        match self {
-            Events::Single(s) => println!("{}'{}' {}", indent, s.string, s),
-            Events::Multi(m) => {
-                println!(
-                    "{}multi {} -> {} [{}]",
-                    indent, m.span.start, m.span.end, m.length
-                );
-                for e in &m.events {
-                    e.print(depth + 1)
-                }
-            }
-            Events::Poly(p) => {
-                println!(
-                    "{}poly {} -> {} [{}]",
-                    indent, p.span.start, p.span.end, p.length
-                );
-                for e in &p.channels {
-                    e.print(depth + 1)
-                }
-            }
-        }
     }
 }
 
@@ -1405,7 +1374,7 @@ impl CycleParser {
         match pair.as_rule() {
             Rule::variable => Self::variable(pair),
             Rule::single => Ok(Self::single(pair)?),
-            Rule::repeat => Ok(Step::Static(Static::Repeat)),
+            Rule::repeat => Ok(Step::Repeat),
             Rule::subdivision | Rule::mini => Self::group(pair, Step::subdivision),
             Rule::alternating => Self::group(pair, Step::alternating),
             Rule::polymeter => Self::polymeter(pair),
@@ -1545,19 +1514,6 @@ impl CycleParser {
         }))
     }
 
-    /// transform static steps into their final form and push them onto a list
-    fn push_applied(steps: &mut Vec<Step>, step: Step) {
-        match &step {
-            Step::Static(s) => match s {
-                Static::Repeat => {
-                    let repeat = steps.last().cloned().unwrap_or(Step::rest());
-                    steps.push(repeat)
-                }
-            },
-            _ => steps.push(step),
-        }
-    }
-
     /// helper to split a list of pairs over a rule, used for stacks and split shorthand
     fn split_over(pairs: Vec<Pair<Rule>>, rule: Rule) -> Vec<Vec<Pair<Rule>>> {
         pairs.into_iter().fold(vec![vec![]], |mut a, p| {
@@ -1596,7 +1552,7 @@ impl CycleParser {
                 if let Some(first) = vs.first() {
                     if vs.len() > 1 {
                         Ok(Step::Choices(Choices {
-                            choices: Self::section_vec(vs)?,
+                            choices: Self::with_choices(vs)?,
                         }))
                     } else {
                         Self::step(first.clone())
@@ -1608,19 +1564,10 @@ impl CycleParser {
             .collect()
     }
 
-    fn section_vec(pairs: Vec<Pair<Rule>>) -> Result<Vec<Step>, String> {
-        let choiced_steps = Self::with_choices(pairs)?;
-        let mut steps = Vec::with_capacity(choiced_steps.len());
-        for step in choiced_steps.into_iter() {
-            Self::push_applied(&mut steps, step)
-        }
-        Ok(steps)
-    }
-
     fn section(pairs: Vec<Pair<Rule>>) -> Result<Vec<Step>, String> {
         let split_pairs = Self::split_over(pairs, Rule::split_op)
             .into_iter()
-            .map(Self::section_vec)
+            .map(Self::with_choices)
             .collect::<Result<Vec<Vec<Step>>, String>>()?;
 
         Ok(if split_pairs.len() > 1 {
@@ -1662,7 +1609,10 @@ impl CycleParser {
         if let Some(count) = pair.clone().into_inner().next() {
             Self::step(count)
         } else {
-            Err(format!("missing polymeter count '{}'", pair.as_str()))
+            Err(format!(
+                "error in grammar, missing polymeter count '{}'",
+                pair.as_str()
+            ))
         }
     }
 
@@ -1691,46 +1641,15 @@ impl CycleParser {
             };
 
         match (count, stack, steps) {
-            (Some(count), None, Some(steps)) => {
-                // a regular polymeter with explicit count
-                Ok(Step::polymeter(steps, count))
-            }
-            (Some(count), Some(stack), _) => {
-                // sections in a stack with explicit count will all have that
-                Ok(Step::Stack(Stack {
-                    stack: stack
-                        .into_iter()
-                        .map(|steps| Step::polymeter(steps, count.clone()))
-                        .collect(),
-                }))
-            }
-            (None, Some(stack), _) => {
-                let count = stack
-                    .first()
-                    .map(Vec::len)
-                    .ok_or_else(|| format!("empty stack {:?}", stack))?;
-
-                if stack.len() > 1 && count > 0 {
-                    let count = Step::Single(Single {
-                        value: Constant::Integer(count as i32),
-                        string: Rc::from(count.to_string()),
-                    });
-                    // if there is a stack but no count, the first section will determine the count of the rest
-                    Ok(Step::Stack(Stack {
-                        stack: stack
-                            .into_iter()
-                            .map(|steps| Step::polymeter(steps, count.clone()))
-                            .collect(),
-                    }))
-                } else {
-                    // unreachable, a stack will always have more than one sections with each having at least one item
-                    Err(format!("invalid stack {:?}", stack))
-                }
-            }
+            // empty polymeters become a single rest
+            // {}, {}%2 ...
+            (_, None, None) => Ok(Step::rest()),
             // if there is only one section and no count, it is treated as a subdivision
             (None, None, Some(steps)) => Ok(Step::subdivision(steps)),
-            // empty polymeter like {} and {}%2 will become a single rest
-            _ => Ok(Step::rest()),
+            // a mono polymeter with optional count
+            (count, None, Some(steps)) => Ok(Step::polymeter(vec![steps], count)),
+            // a stacked polymeter with optional count
+            (count, Some(stack), _) => Ok(Step::polymeter(stack, count)),
         }
     }
 
@@ -1794,7 +1713,10 @@ impl CycleParser {
         String::from("unreachable: missing right hand side from op_pair, error in grammar!")
     }
 
-    fn optional_right_hand(op_pair: Pair<Rule>, default: fn() -> Step) -> Result<Step, String> {
+    fn optional_single_right_hand(
+        op_pair: Pair<Rule>,
+        default: fn() -> Step,
+    ) -> Result<Step, String> {
         if let Some(pair) = op_pair.into_inner().next() {
             match pair.as_rule() {
                 Rule::single => Self::single(pair),
@@ -1810,7 +1732,7 @@ impl CycleParser {
     // with the current pest setup, this seems impossible if we want to support optional parameter here
     // at least it is impossible without major rearrangement of the grammar and parsing
     fn weight_expression(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
-        let weight = Self::optional_right_hand(op_pair, || {
+        let weight = Self::optional_single_right_hand(op_pair, || {
             Step::constant(Constant::Float(2.0), Some("2.0"))
         })?;
 
@@ -1821,18 +1743,18 @@ impl CycleParser {
     }
 
     fn replicate_expression(left: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
-        let count = Self::optional_right_hand(op_pair, || {
+        let count = Self::optional_single_right_hand(op_pair, || {
             Step::constant(Constant::Float(2.0), Some("2.0"))
         })?;
 
         Ok(Step::Replicated(Replicated {
             step: Box::new(left),
-            count: Box::new(count),
+            repeats: Box::new(count),
         }))
     }
 
     fn degrade_expression(step: Step, op_pair: Pair<Rule>) -> Result<Step, String> {
-        let chance = Self::optional_right_hand(op_pair, || {
+        let chance = Self::optional_single_right_hand(op_pair, || {
             Step::constant(Constant::Float(0.5), Some("0.5"))
         })?;
 
@@ -1954,9 +1876,9 @@ impl Cycle {
 
     fn output_multiplied(
         step: &Step,
+        mult: Fraction,
         state: &mut CycleState,
         cycle: u32,
-        mult: Fraction,
         limit: usize,
         overlap: bool,
         vars: Option<&Vars>,
@@ -1978,69 +1900,68 @@ impl Cycle {
         overlap: bool,
         vars: Option<&Vars>,
     ) -> Result<Fraction, String> {
-        let right_events = Self::output(step, state, cycle, limit, overlap, vars)?;
-        Ok(right_events
-            .first()
-            .and_then(|e| e.value.to_fraction())
-            .unwrap_or(Fraction::ONE))
+        let length_mod = match step {
+            Step::Replicated(replicated) => Some(replicated.repeats.as_ref()),
+            Step::Weighted(weighted) => Some(weighted.weight.as_ref()),
+            _ => None,
+        };
+
+        if let Some(step) = length_mod {
+            let right_events = Self::output(step, state, cycle, limit, overlap, vars)?;
+            Ok(right_events
+                .first()
+                .and_then(|e| e.value.to_fraction())
+                .unwrap_or(Fraction::ONE))
+        } else {
+            Ok(Fraction::ONE)
+        }
     }
 
-    // helper to calculate the right multiplier for polymeter and speed expressions
-    fn step_multiplier(
+    fn sub_length(
         step: &Step,
-        value: &Constant,
         state: &mut CycleState,
         cycle: u32,
         limit: usize,
         overlap: bool,
         vars: Option<&Vars>,
     ) -> Result<Fraction, String> {
-        let mult = match step {
-            Step::Polymeter(pm) => {
-                let length = if let Step::Subdivision(s) = pm.steps.as_ref() {
-                    let mut a = Fraction::ZERO;
-                    for v in s.steps.iter() {
-                        let inner_length = match v {
-                            Step::Replicated(re) => Self::step_length(
-                                re.count.as_ref(),
-                                state,
-                                cycle,
-                                limit,
-                                overlap,
-                                vars,
-                            )?,
-                            _ => Fraction::ONE,
-                        };
-                        a += inner_length
-                    }
-                    a
-                } else {
-                    // unreachable
-                    Fraction::ONE
-                };
-
-                value.to_fraction().unwrap_or(Fraction::ZERO) / length
+        Ok(match step {
+            Step::Subdivision(sub) => {
+                let mut length = Fraction::ZERO;
+                for s in sub.steps.iter() {
+                    length += Self::step_length(s, state, cycle, limit, overlap, vars)?;
+                }
+                length
             }
-            Step::SpeedExpression(e) => match e.op {
-                SpeedOp::Fast() => value.to_fraction().unwrap_or(Fraction::ZERO),
-                SpeedOp::Slow() => value
-                    .to_float()
-                    .and_then(|div| {
-                        if div != 0.0 {
-                            Fraction::from_f64(1.0 / div)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(Fraction::ZERO),
-            },
-            _ => Fraction::from(1),
-            // _ => value
-            //     .to_float()
-            //     .and_then(Fraction::from_f64)
-            //     .unwrap_or(Fraction::ONE),
-        };
-        Ok(mult)
+            _ => Fraction::ONE,
+        })
+    }
+
+    // helper to calculate the right multiplier for polymeter and speed expressions
+    fn step_multiplier(op: &SpeedOp, value: &Constant) -> Fraction {
+        match op {
+            SpeedOp::Fast() => value.to_fraction().unwrap_or(Fraction::ZERO),
+            SpeedOp::Slow() => value
+                .to_float()
+                .and_then(|div| {
+                    if div != 0.0 {
+                        Fraction::from_f64(1.0 / div)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(Fraction::ZERO),
+            SpeedOp::Fit(outer) => value
+                .to_fraction()
+                .and_then(|inner| {
+                    if *outer != Fraction::ZERO {
+                        Some(inner / outer)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(Fraction::ZERO),
+        }
     }
 
     // overlay two lists of events and apply the targets from the second to the first
@@ -2143,43 +2064,40 @@ impl Cycle {
                     }
                 }
                 // put all the resulting events back together
-                Ok(Events::maybe_poly(PolyEvents {
-                    length: left_span.length(),
-                    span: left_span,
-                    channels: channel_events,
-                }))
+                Ok(Events::collapsed_poly(
+                    channel_events,
+                    left_span.length(),
+                    left_span,
+                ))
             }
         }
     }
 
     // output a multiplied pattern expression with support for patterns on the right side
+    #[allow(clippy::too_many_arguments)]
     fn output_with_speed(
-        right: &Step,
         step: &Step,
+        op: &SpeedOp,
+        mult: &Step,
         state: &mut CycleState,
         cycle: u32,
         limit: usize,
         overlap: bool,
         vars: Option<&Vars>,
     ) -> Result<Events, String> {
-        let left = match step {
-            Step::Polymeter(pm) => pm.steps.as_ref(),
-            Step::SpeedExpression(exp) => exp.step.as_ref(),
-            _ => step,
-        };
-        match right {
+        match mult {
             // multiply with single values to avoid generating events
             Step::Single(single) => {
                 // apply multiplier
-                let multiplier =
-                    Self::step_multiplier(step, &single.value, state, cycle, limit, overlap, vars)?;
+                let multiplier = Self::step_multiplier(op, &single.value);
                 Ok(Self::output_multiplied(
-                    left, state, cycle, multiplier, limit, overlap, vars,
+                    step, multiplier, state, cycle, limit, overlap, vars,
                 )?)
             }
             _ => {
                 // generate and flatten the events for the right side of the expression
-                let events = Self::output(right, state, cycle, limit, overlap, vars)?;
+                let mut events = Self::output(mult, state, cycle, limit, overlap, vars)?;
+                events.transform_spans(&Span::default());
                 let channels = events.export();
 
                 // extract a float to use as mult from each event and output the step with it
@@ -2187,36 +2105,27 @@ impl Cycle {
                 for channel in channels.into_iter() {
                     let mut multi_events: Vec<Events> = Vec::with_capacity(channel.len());
                     for event in channel {
-                        // apply multiplier
-                        let multiplier = Self::step_multiplier(
-                            step,
-                            &event.value,
-                            state,
-                            cycle,
-                            limit,
-                            overlap,
-                            vars,
-                        )?;
+                        let multiplier = Self::step_multiplier(op, &event.value);
                         let mut partial_events = Self::output_multiplied(
-                            left, state, cycle, multiplier, limit, overlap, vars,
+                            step, multiplier, state, cycle, limit, overlap, vars,
                         )?;
-                        // crop and push to multi events
+                        // crop to each span of the resulting multipliers and concat
                         partial_events.crop(&event.span, overlap);
                         multi_events.push(partial_events);
                     }
-                    channel_events.push(Events::Multi(MultiEvents {
-                        length: events.get_length(),
-                        span: events.get_span(),
-                        events: multi_events,
-                    }));
+                    channel_events.push(Events::collapsed_multi(
+                        multi_events,
+                        events.get_length(),
+                        events.get_span(),
+                    ));
                 }
 
                 // put all the resulting events back together
-                Ok(Events::maybe_poly(PolyEvents {
-                    length: events.get_length(),
-                    span: events.get_span(),
-                    channels: channel_events,
-                }))
+                Ok(Events::collapsed_poly(
+                    channel_events,
+                    events.get_length(),
+                    events.get_span(),
+                ))
             }
         }
     }
@@ -2262,18 +2171,21 @@ impl Cycle {
                 if sd.steps.is_empty() {
                     Events::empty()
                 } else {
-                    let mut events = Vec::with_capacity(sd.steps.len());
+                    let mut events: Vec<Events> = Vec::with_capacity(sd.steps.len());
                     for s in &sd.steps {
-                        let e = Self::output(s, state, cycle, limit, overlap, vars)?;
-                        events.push(e)
+                        events.push(if matches!(s, Step::Repeat) {
+                            if let Some(last) = events.last() {
+                                last.clone()
+                            } else {
+                                Events::empty()
+                            }
+                        } else {
+                            Self::output(s, state, cycle, limit, overlap, vars)?
+                        })
                     }
 
                     Events::subdivide_lengths(&mut events);
-                    Events::Multi(MultiEvents {
-                        span: Span::default(),
-                        length: Fraction::ONE,
-                        events,
-                    })
+                    Events::collapsed_multi(events, Fraction::ONE, Span::default())
                 }
             }
             Step::Weighted(we) => {
@@ -2288,14 +2200,15 @@ impl Cycle {
                 events
             }
             Step::Replicated(we) => {
-                let count = Self::output(we.count.as_ref(), state, cycle, limit, overlap, vars)?
-                    .first()
-                    .and_then(|e| e.value.to_float())
-                    .unwrap_or(2.0);
+                let repeats =
+                    Self::output(we.repeats.as_ref(), state, cycle, limit, overlap, vars)?
+                        .first()
+                        .and_then(|e| e.value.to_float())
+                        .unwrap_or(2.0);
 
-                let ceil = count.ceil();
+                let ceil = repeats.ceil();
                 let len = if ceil == 0.0 { 1 } else { ceil as usize };
-                let mult = count / ceil;
+                let mult = repeats / ceil;
 
                 let steps = vec![we.step.as_ref().clone(); len];
                 let sub = Step::subdivision(steps);
@@ -2311,36 +2224,63 @@ impl Cycle {
                 });
 
                 let mut events = Self::output(&step, state, cycle, limit, overlap, vars)?;
-                events.set_length(Fraction::from_f64(count).unwrap_or(Fraction::ONE));
+                events.set_length(Fraction::from_f64(repeats).unwrap_or(Fraction::ONE));
                 events
-            }
-            Step::Alternating(a) => {
-                if a.steps.is_empty() {
-                    Events::empty()
-                } else {
-                    let length = a.steps.len() as u32;
-                    let current = cycle % length;
-                    a.steps
-                        .get(current as usize)
-                        .map(|step| Self::output(step, state, cycle / length, limit, overlap, vars))
-                        .unwrap_or(
-                            Ok(Events::empty()), // unreachable
-                        )?
-                }
             }
             Step::Choices(cs) => {
                 let choice = state.rng.random_range(0..cs.choices.len());
                 Self::output(&cs.choices[choice], state, cycle, limit, overlap, vars)?
             }
-            Step::Polymeter(pm) => Self::output_with_speed(
-                pm.count.as_ref(),
-                step,
-                state,
-                cycle,
-                limit,
-                overlap,
-                vars,
-            )?,
+            Step::Polymeter(pm) => {
+                if let Some(count) = &pm.count {
+                    let mut channels = vec![];
+                    for sub in pm.stack.iter() {
+                        let length = Self::sub_length(sub, state, cycle, limit, overlap, vars)?;
+                        let events = Self::output_with_speed(
+                            sub,
+                            &SpeedOp::Fit(length),
+                            count,
+                            state,
+                            cycle,
+                            limit,
+                            overlap,
+                            vars,
+                        )?;
+                        channels.push(events)
+                    }
+                    Events::collapsed_poly(channels, Fraction::ONE, Span::default())
+                } else {
+                    let Some(first) = pm.stack.first() else {
+                        return Ok(Events::empty());
+                    };
+
+                    let first_length = Self::sub_length(first, state, cycle, limit, overlap, vars)?;
+                    let mult = Step::constant(
+                        Constant::Float((first_length).to_f64().unwrap_or_default()),
+                        None,
+                    );
+                    let mut channels = vec![];
+                    for (i, sub) in pm.stack.iter().enumerate() {
+                        let length = if i == 0 {
+                            first_length
+                        } else {
+                            Self::sub_length(sub, state, cycle, limit, overlap, vars)?
+                        };
+                        let events = Self::output_with_speed(
+                            sub,
+                            &SpeedOp::Fit(length),
+                            &mult,
+                            state,
+                            cycle,
+                            limit,
+                            overlap,
+                            vars,
+                        )?;
+                        channels.push(events)
+                    }
+                    Events::collapsed_poly(channels, Fraction::ONE, Span::default())
+                }
+            }
             Step::Stack(st) => {
                 if st.stack.is_empty() {
                     Events::empty()
@@ -2349,11 +2289,7 @@ impl Cycle {
                     for s in &st.stack {
                         channels.push(Self::output(s, state, cycle, limit, overlap, vars)?)
                     }
-                    Events::maybe_poly(PolyEvents {
-                        span: Span::default(),
-                        length: Fraction::ONE,
-                        channels,
-                    })
+                    Events::collapsed_poly(channels, Fraction::ONE, Span::default())
                 }
             }
             Step::Degrade(d) => {
@@ -2372,9 +2308,16 @@ impl Cycle {
                 out
             }
             Step::Targeted(e) => Self::output_with_target(e, state, cycle, limit, overlap, vars)?,
-            Step::SpeedExpression(e) => {
-                Self::output_with_speed(e.mult.as_ref(), step, state, cycle, limit, overlap, vars)?
-            }
+            Step::SpeedExpression(e) => Self::output_with_speed(
+                e.step.as_ref(),
+                &e.op,
+                e.mult.as_ref(),
+                state,
+                cycle,
+                limit,
+                overlap,
+                vars,
+            )?,
             Step::Bjorklund(b) => {
                 let mut events = vec![];
 
@@ -2409,18 +2352,9 @@ impl Cycle {
                 }
 
                 Events::subdivide_lengths(&mut events);
-                Events::Multi(MultiEvents {
-                    span: Span::default(),
-                    length: Fraction::ONE,
-                    events,
-                })
+                Events::collapsed_multi(events, Fraction::ONE, Span::default())
             }
 
-            Step::Static(_) => {
-                // Repeat only makes it here if it had no preceding value
-                // Range and Expression should be applied in Self::push_applied
-                Events::empty()
-            }
             Step::Ranged(r) => {
                 let start = Self::output(r.start.as_ref(), state, cycle, limit, overlap, vars)?
                     .first()
@@ -2457,6 +2391,7 @@ impl Cycle {
 
                 Self::output(&step, state, cycle, limit, overlap, vars)?
             }
+            Step::Repeat => Events::empty(),
         };
         Ok(events)
     }
@@ -2470,20 +2405,17 @@ impl Cycle {
                 _ => format!("{:?} {:?}", s.value, s.string),
             },
             Step::Subdivision(sd) => format!("Subdivision [{}]", sd.steps.len()),
-            Step::Alternating(a) => format!("Alternating <{}>", a.steps.len()),
             Step::Polymeter(pm) => format!("Polymeter {{{:?}}}", pm.count),
             Step::Choices(cs) => format!("Choices |{}|", cs.choices.len()),
             Step::Stack(st) => format!("Stack ({})", st.stack.len()),
             Step::SpeedExpression(e) => format!("Speed Expression {:?}", e.op),
             Step::Weighted(we) => format!("Weight Expression {:?}", we.weight),
-            Step::Replicated(we) => format!("Replicate Expression {:?}", we.count),
+            Step::Replicated(we) => format!("Replicate Expression {:?}", we.repeats),
             Step::Targeted(e) => format!("Target Expression {:?}", e.kind),
-            Step::Static(s) => match s {
-                Static::Repeat => "Repeat".to_string(),
-            },
             Step::Degrade(d) => format!("Degrade ? {:?}", d.chance),
             Step::Bjorklund(_b) => format!("Bjorklund {}", ""),
             Step::Ranged(_) => "Ranged".to_string(),
+            Step::Repeat => "Repeat".to_string(),
         };
         println!("{} {}", indent_lines(level), name);
         for step in step.inner_steps() {

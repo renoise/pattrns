@@ -37,6 +37,15 @@ fn assert_cycle_advancing(input: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn cycle_with_vars(input: &str, subcycles: Vec<(&str, &str)>) -> Result<Cycle, String> {
+    let mut cycle = Cycle::from(input)?;
+    for (name, input) in subcycles {
+        let subcycle = SubCycle::from(input)?;
+        cycle.set_var(name, subcycle);
+    }
+    Ok(cycle)
+}
+
 #[test]
 fn span() -> Result<(), String> {
     assert!(Span::new(Fraction::new(0, 1), Fraction::new(1, 1))
@@ -53,54 +62,164 @@ fn weight_and_replicate() -> Result<(), String> {
 
 #[test]
 fn variables() -> Result<(), String> {
-    let note = SubCycle::from("e4")?;
-    let mut cycle = Cycle::from("a b $note d")?;
-    cycle.set_var("note", note);
-    assert_eq!(cycle.generate(), Cycle::from("a b e4 d")?.generate());
-
-    // unset variables convert into named
-    let mut cycle = Cycle::from("a $note")?;
-    assert_eq!(cycle.generate(), Cycle::from("a note")?.generate());
-
-    let index = Constant::Integer(12);
-    let mut cycle = Cycle::from("a:$index")?;
-    cycle.set_var_constant("index", index);
-    assert_eq!(cycle.generate(), Cycle::from("a:12")?.generate());
-
-    let sub = SubCycle::from("1 2")?;
-    let mut cycle = Cycle::from("a*$sub")?;
-    cycle.set_var("sub", sub);
-    assert_eq!(cycle.generate(), Cycle::from("a*[1 2]")?.generate());
-
-    let f1 = Constant::Float(0.5);
-    let f2 = Constant::Float(0.9);
-    let mut cycle = Cycle::from("[a b c d]:p=[$f1 $f2]")?;
-    cycle.set_var_constant("f1", f1);
-    cycle.set_var_constant("f2", f2);
-    assert_eq!(
-        cycle.generate(),
-        Cycle::from("[a b c d]:p=[0.5 0.9]")?.generate()
-    );
-
-    let mult = Constant::Float(2.0);
-    let mut cycle = Cycle::from("a*$mult")?;
-    cycle.set_var_constant("mult", mult);
-    assert_eq!(cycle.generate(), Cycle::from("a*2")?.generate());
-
-    let length = Constant::Float(3.0);
-    let mut cycle = Cycle::from("a@$length b")?;
-    cycle.set_var_constant("length", length);
-    assert_eq!(cycle.generate(), Cycle::from("a@3 b")?.generate());
-
-    let float = Constant::Float(0.9);
-    let mut cycle = Cycle::from("a:p$float")?;
-    cycle.set_var_constant("float", float);
-    assert_eq!(cycle.generate(), Cycle::from("a:p0.9")?.generate());
-
     assert!(SubCycle::from("a b c d").is_ok());
+    // subcycles cannot contain variables
     assert!(SubCycle::from("[a b c d]*$mult").is_err());
     assert!(SubCycle::from("$note $note $note").is_err());
     assert!(SubCycle::from("a:p=<0.5 0.2 $right>").is_err());
+
+    assert_eq!(
+        cycle_with_vars("a b $note d", vec![("note", "e4")])?.generate(),
+        Cycle::from("a b e4 d")?.generate()
+    );
+
+    // unset variables convert into named
+    assert_eq!(
+        Cycle::from("a $note")?.generate(),
+        Cycle::from("a note")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a:$index", vec![("index", "12")])?.generate(),
+        Cycle::from("a:12")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a*$mult", vec![("mult", "1 2")])?.generate(),
+        Cycle::from("a*[1 2]")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("[a b c d]:p=[$f1 $f2]", vec![("f1", "0.5"), ("f2", "0.9")])?.generate(),
+        Cycle::from("[a b c d]:p=[0.5 0.9]")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a*$mult", vec![("mult", "2.0")])?.generate(),
+        Cycle::from("a*2")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a@$length b", vec![("length", "3.0")])?.generate(),
+        Cycle::from("a@3 b")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a:p$float", vec![("float", "0.9")])?.generate(),
+        Cycle::from("a:p0.9")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("[a b c d]:p=[$f1 $f2]", vec![("f1", "0.5"), ("f2", "0.9")])?.generate(),
+        Cycle::from("[a b c d]:p=[0.5 0.9]")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a@$length b", vec![("length", "3.0")])?.generate(),
+        Cycle::from("a _ _ b")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars("a!$repeat b", vec![("repeat", "3.0")])?.generate(),
+        Cycle::from("a a a b")?.generate()
+    );
+
+    assert_eq!(
+        cycle_with_vars(
+            "a*[[$int1 $int2!$repeat]*$mult]",
+            vec![
+                ("int1", "1"),
+                ("int2", "2"),
+                ("repeat", "2.0"),
+                ("mult", "2.5")
+            ]
+        )?
+        .generate(),
+        Cycle::from("a*[[1 2 2]*2.5]")?.generate()
+    );
+
+    let mut cycle = cycle_with_vars("a!$repeat", vec![])?;
+    let outputs = ["a", "a a", "a a a", "a a a a"];
+    for (i, o) in outputs.iter().enumerate() {
+        cycle.set_var("repeat", SubCycle::from(&(i + 1).to_string())?);
+        assert_eq!(cycle.generate(), Cycle::from(o)?.generate());
+    }
+
+    let mut cycle = cycle_with_vars("$note", vec![])?;
+    let mut static_cycle = Cycle::from("<a b c d>")?;
+    for note in ["a", "b", "c", "d"] {
+        cycle.set_var("note", SubCycle::from(note)?);
+        assert_eq!(cycle.generate(), static_cycle.generate());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn polymeter() -> Result<(), String> {
+    assert_eq!(
+        Cycle::from("{0 1 2, 0 1 2 3}")?.generate(),
+        Cycle::from("{0 1 2, 0 1 2 3}%3")?.generate(),
+    );
+
+    assert_eq!(
+        Cycle::from("{0 ! ! 1}%2")?.generate(),
+        Cycle::from("{0 0 0 1}%2")?.generate(),
+    );
+
+    assert_eq!(
+        Cycle::from("{0 1!2, 0 1 2 3}")?.generate(),
+        Cycle::from("{0 1 1, 0 1 2 3}%3")?.generate(),
+    );
+
+    assert_eq!(
+        Cycle::from("{a b c d}%3")?.generate(),
+        Cycle::from("[a b c d]*0.75")?.generate(),
+    );
+
+    assert_cycles(
+        "{-3 -2 -1 0 1 2 3}%4",
+        vec![
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(-3),
+                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(-2),
+                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(-1),
+                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(0),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(1),
+                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(2),
+                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(3),
+                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(-3),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(-2),
+                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(-1),
+                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(0),
+                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(1),
+            ]],
+        ],
+    )?;
+
+    assert_cycle_equality("{a b!2 c}%3", "{a b b c}%3")?;
+    assert_cycle_equality("a b, {c d e}%2", "{a b, c d e}")?;
+    assert_cycle_equality("{a b . c d . f g h}%2", "{[a b] [c d] [f g h]}%2")?;
+
+    assert_cycles(
+        "{0 1 2 3}%<2 3>",
+        vec![
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(1),
+            ]],
+            vec![vec![
+                Event::at(Fraction::from(0), Fraction::new(1, 3)).with_int(3),
+                Event::at(Fraction::new(1, 3), Fraction::new(1, 3)).with_int(0),
+                Event::at(Fraction::new(2, 3), Fraction::new(1, 3)).with_int(1),
+            ]],
+        ],
+    )?;
+
     Ok(())
 }
 
@@ -626,30 +745,6 @@ fn generate() -> Result<(), String> {
         ],
     )?;
 
-    assert_cycles(
-        "{-3 -2 -1 0 1 2 3}%4",
-        vec![
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(-3),
-                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(-2),
-                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(-1),
-                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(0),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(1),
-                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(2),
-                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(3),
-                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(-3),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(-2),
-                Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(-1),
-                Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(0),
-                Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(1),
-            ]],
-        ],
-    )?;
-
     assert_eq!(
         Cycle::from("[1 middle _] {}%42 [] <>")?.generate()?,
         [[
@@ -820,8 +915,6 @@ fn generate() -> Result<(), String> {
     assert_cycle_equality("[! ! a !]", "[~ ~ a a]")?;
     assert_cycle_equality("a ~ ~ ~", "a - - -")?;
     assert_cycle_equality("[a b] ! ! <a b c> !", "[a b] [a b] [a b] <a b c> <a b c>")?;
-    assert_cycle_equality("{a b!2 c}%3", "{a b b c}%3")?;
-    assert_cycle_equality("a b, {c d e}%2", "{a b, c d e}")?;
     assert_cycle_equality("0..3", "0 1 2 3")?;
     assert_cycle_equality("-5..-8", "-5 -6 -7 -8")?;
     assert_cycle_equality("a b . c d", "[a b] [c d]")?;
@@ -833,7 +926,6 @@ fn generate() -> Result<(), String> {
         "a b . c d e , f g h i . j k, l m",
         "[a b] [c d e], [[f g h i] [j k]], [l m]",
     )?;
-    assert_cycle_equality("{a b . c d . f g h}%2", "{[a b] [c d] [f g h]}%2")?;
     assert_cycle_equality("<a b . c d . f g h>", "<[a b] [c d] [f g h]>")?;
 
     assert_cycles(
@@ -874,21 +966,6 @@ fn generate() -> Result<(), String> {
             Event::at(Fraction::new(2, 3), Fraction::new(1, 3)).with_int(0),
         ]]
     );
-
-    assert_cycles(
-        "{0 1 2 3}%<2 3>",
-        vec![
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
-                Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(1),
-            ]],
-            vec![vec![
-                Event::at(Fraction::from(0), Fraction::new(1, 3)).with_int(3),
-                Event::at(Fraction::new(1, 3), Fraction::new(1, 3)).with_int(0),
-                Event::at(Fraction::new(2, 3), Fraction::new(1, 3)).with_int(1),
-            ]],
-        ],
-    )?;
 
     // TODO test random outputs // parse_with_debug("[a b c d]?0.5");
 
