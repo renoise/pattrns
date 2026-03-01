@@ -1928,8 +1928,12 @@ impl Cycle {
         Ok(match step {
             Step::Subdivision(sub) => {
                 let mut length = Fraction::ZERO;
+                let mut last_length = Fraction::ZERO;
                 for s in sub.steps.iter() {
-                    length += Self::step_length(s, state, cycle, limit, overlap, vars)?;
+                    if !matches!(s, Step::Repeat) {
+                        last_length = Self::step_length(s, state, cycle, limit, overlap, vars)?;
+                    }
+                    length += last_length;
                 }
                 length
             }

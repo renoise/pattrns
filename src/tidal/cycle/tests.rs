@@ -177,6 +177,11 @@ fn polymeter() -> Result<(), String> {
         Cycle::from("[a b c d]*0.75")?.generate(),
     );
 
+    assert_eq!(
+        Cycle::from("{a@2 ! c, d e f}")?.generate(),
+        Cycle::from("{a@2 a@2 c, d e f}")?.generate(),
+    );
+
     assert_cycles(
         "{-3 -2 -1 0 1 2 3}%4",
         vec![
