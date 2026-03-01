@@ -389,7 +389,6 @@ impl Emitter for CycleEmitter {
         match Parameter::parse_subcycles(&parameters) {
             Ok(parameters) => self.parameters = parameters,
             Err(err) => {
-                // FIX handle this more gracefully?
                 panic!("{err}")
             }
         }

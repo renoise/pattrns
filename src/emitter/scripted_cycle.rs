@@ -313,7 +313,7 @@ impl Emitter for ScriptedCycleEmitter {
                 }
             }
             Err(err) => {
-                // FIX make error point to the enum def?
+                // TODO make error point to the enum def?
                 add_lua_callback_error(None, None, "enum".to_string(), LuaError::RuntimeError(err));
             }
         }
