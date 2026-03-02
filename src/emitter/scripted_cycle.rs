@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use num_traits::ToPrimitive;
 
@@ -9,9 +9,9 @@ use crate::{
         add_lua_callback_error, note_events_from_value, ContextPlaybackState, LuaCallback,
         LuaTimeoutHook,
     },
-    emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents, ParameterWithValues},
-    BeatTimeBase, Cycle, CycleEvent, CycleValue, Emitter, EmitterEvent, Event, NoteEvent,
-    Parameter, ParameterSet, RhythmEvent,
+    emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents},
+    BeatTimeBase, Cycle, CycleEvent, CycleSubCycle, CycleValue, Emitter, EmitterEvent, Event,
+    NoteEvent, Parameter, ParameterSet, RhythmEvent,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -20,13 +20,13 @@ use crate::{
 ///
 /// Channels from cycle are merged down into note events on different voices.
 /// Values in cycles can be mapped to notes with an optional mapping table or
-/// callbacks from from scripts.
+/// callbacks from scripts.
 ///
 /// See also [`CycleEmitter`](`super::cycle::CycleEmitter`)
 #[derive(Clone, Debug)]
 pub struct ScriptedCycleEmitter {
     cycle: Cycle,
-    parameters: Vec<ParameterWithValues>,
+    parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
     mapping_callback: Option<LuaCallback>,
     timeout_hook: Option<LuaTimeoutHook>,
@@ -296,25 +296,42 @@ impl Emitter for ScriptedCycleEmitter {
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
-        match Parameter::parse_subcycles(&parameters) {
-            Ok(with_subcycles) => {
-                // store parameters, so we can inject them in generate()
-                self.parameters = with_subcycles;
+        // parse and unwrap cycle subcycle values from enum parameters
+        let unwrap_sub_cycle_result = |sub_cycle: Result<CycleSubCycle, String>| -> CycleSubCycle {
+            sub_cycle.unwrap_or_else(|err| {
+                // forwarding parse error as runtime errors
+                add_lua_callback_error(
+                    None,
+                    None,
+                    "cycle".to_string(),
+                    LuaError::RuntimeError(err),
+                );
+                // return rest value to prevent further runtime errors, which would mask the original error
+                CycleSubCycle::rest()
+            })
+        };
+        self.parameters = parameters
+            .iter()
+            .map(|parameter| {
+                (
+                    Rc::clone(&parameter),
+                    parameter
+                        .borrow()
+                        .parse_subcycles()
+                        .into_iter()
+                        .map(unwrap_sub_cycle_result)
+                        .collect(),
+                )
+            })
+            .collect();
 
-                // and pass them to the mapping callback context
-                if let Some(timeout_hook) = &mut self.timeout_hook {
-                    timeout_hook.reset();
-                }
-
-                if let Some(callback) = &mut self.mapping_callback {
-                    if let Err(err) = callback.set_context_parameters(parameters) {
-                        callback.handle_error(&err);
-                    }
-                }
-            }
-            Err(err) => {
-                // TODO make error point to the enum def?
-                add_lua_callback_error(None, None, "enum".to_string(), LuaError::RuntimeError(err));
+        // pass parameters to the mapping callback context
+        if let Some(timeout_hook) = &mut self.timeout_hook {
+            timeout_hook.reset();
+        }
+        if let Some(callback) = &mut self.mapping_callback {
+            if let Err(err) = callback.set_context_parameters(parameters) {
+                callback.handle_error(&err);
             }
         }
     }

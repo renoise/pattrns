@@ -46,34 +46,33 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 
 // -------------------------------------------------------------------------------------------------
 
-/// Convert a [`Parameter`] value to a [`CycleValue`].
-pub type ParameterWithValues = (Rc<RefCell<Parameter>>, Vec<CycleSubCycle>);
 impl Parameter {
-    pub fn into_var(&self, values: &[CycleSubCycle]) -> CycleSubCycle {
+    /// Convert a [`Parameter`] value to a [`CycleValue`].
+    pub fn into_var(&self, enum_sub_cycles: &[CycleSubCycle]) -> CycleSubCycle {
         match self.parameter_type() {
             ParameterType::Boolean => CycleSubCycle::integer((self.value() >= 0.5) as i32),
             ParameterType::Float => CycleSubCycle::float(self.value()),
             ParameterType::Integer => CycleSubCycle::integer(self.value().round() as i32),
-            ParameterType::Enum => values[self.value().round() as usize].clone(),
+            ParameterType::Enum => enum_sub_cycles[self.value().round() as usize].clone(),
         }
     }
 
-    pub fn parse_subcycles(parameters: &ParameterSet) -> Result<Vec<ParameterWithValues>, String> {
-        let mut result = vec![];
-        for p in parameters.iter() {
-            result.push((Rc::clone(p), {
-                if p.borrow().parameter_type() == ParameterType::Enum {
-                    let mut values = vec![];
-                    for string in p.borrow().value_strings().iter() {
-                        values.push(CycleSubCycle::from(string)?)
-                    }
-                    values
-                } else {
-                    Vec::default()
-                }
-            }))
+    /// Parse enum parameter values into sub-cycle results.
+    pub fn parse_subcycles(&self) -> Vec<Result<CycleSubCycle, String>> {
+        match self.parameter_type() {
+            ParameterType::Enum => self
+                .value_strings()
+                .iter()
+                .map(|string| {
+                    CycleSubCycle::from(string).map_err(|err| {
+                        format!(
+                            "Failed to convert enum parameter value '{string}' to sub-cycle: {err}"
+                        )
+                    })
+                })
+                .collect(),
+            _ => vec![],
         }
-        Ok(result)
     }
 }
 
@@ -274,7 +273,7 @@ impl CycleNoteEvents {
 #[derive(Clone, Debug)]
 pub struct CycleEmitter {
     cycle: Cycle,
-    parameters: Vec<ParameterWithValues>,
+    parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
 }
 
@@ -386,12 +385,24 @@ impl Emitter for CycleEmitter {
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
-        match Parameter::parse_subcycles(&parameters) {
-            Ok(parameters) => self.parameters = parameters,
-            Err(err) => {
-                panic!("{err}")
-            }
-        }
+        // parse and unwrap cycle values
+        self.parameters = parameters
+            .iter()
+            .map(|parameter| {
+                (
+                    Rc::clone(&parameter),
+                    parameter
+                        .borrow()
+                        .parse_subcycles()
+                        .into_iter()
+                        .map(|result| {
+                            // we got no way indicate runtime errors here, so just panic
+                            result.unwrap_or_else(|err| panic!("{err}"))
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
     }
 
     fn run(&mut self, _pulse: RhythmEvent, emit_event: bool) -> Option<Vec<EmitterEvent>> {
@@ -479,7 +490,7 @@ mod tests {
         let mut expected = new_cycle_emitter("a*3")?;
         assert_eq!(run_emitter(&mut variable)?, run_emitter(&mut expected)?);
 
-        // enum
+        // bool
         let param = Rc::new(RefCell::new(Parameter::with_boolean(
             "enabled", "", "", true,
         )));
@@ -503,6 +514,38 @@ mod tests {
         assert_eq!(run_emitter(&mut variable)?, run_emitter(&mut expected)?);
 
         Ok(())
+    }
+
+    #[test]
+    fn parameter_enum_values() -> Result<(), Box<dyn std::error::Error>> {
+        let param = Rc::new(RefCell::new(Parameter::with_enum(
+            "enum",
+            "",
+            "",
+            vec!["c4".to_string(), "[c4 c5]*4".to_string()],
+            "[c4 c5]*4".to_string(),
+        )));
+        let mut emitter = new_cycle_emitter("$enum")?;
+        emitter.set_parameters(vec![Rc::clone(&param)]);
+
+        let mut expected = new_cycle_emitter("[c4 c5]*4")?;
+        assert_eq!(run_emitter(&mut emitter)?, run_emitter(&mut expected)?);
+
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn parameter_enum_values_error() {
+        let param = Rc::new(RefCell::new(Parameter::with_enum(
+            "enum",
+            "",
+            "",
+            vec!["c4".to_string(), "broken]".to_string()],
+            "c4".to_string(),
+        )));
+        let mut variable = new_cycle_emitter("$enum").unwrap();
+        variable.set_parameters(vec![Rc::clone(&param)]); // this should throw
     }
 
     #[test]

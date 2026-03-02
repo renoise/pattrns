@@ -39,8 +39,14 @@ impl SubCycle {
         if vars.is_empty() {
             Ok(SubCycle { step: cycle.root })
         } else {
-            Err(format!("cycle contains variables\n{vars:?}"))
+            Err(format!(
+                "sub-cycles may not contain variables, found '{}'",
+                vars.into_iter().collect::<Vec<_>>().join(",")
+            ))
         }
+    }
+    pub fn rest() -> Self {
+        Self::new(Step::constant(Constant::Rest, None))
     }
     pub fn float(f: f64) -> Self {
         Self::new(Step::constant(Constant::Float(f), None))
