@@ -1,15 +1,16 @@
-use std::{collections::HashMap, ops::RangeBounds};
+use std::{cell::RefCell, collections::HashMap, ops::RangeBounds, rc::Rc};
 
 type Fraction = num_rational::Rational32;
 
 use crate::{
-    event::new_note, BeatTimeBase, Chord, Cycle, CycleEvent, CycleTarget, CycleValue, Emitter,
-    EmitterEvent, Event, InstrumentId, Note, NoteEvent, ParameterSet, RhythmEvent,
+    event::new_note, BeatTimeBase, Chord, Cycle, CycleEvent, CycleSubCycle, CycleTarget,
+    CycleValue, Emitter, EmitterEvent, Event, InstrumentId, Note, NoteEvent, Parameter,
+    ParameterSet, ParameterType, RhythmEvent,
 };
 
 // -------------------------------------------------------------------------------------------------
 
-/// Default conversion of a CycleValue into a note stack.
+/// Try converting a [`CycleValue`] into a note event stack.
 ///
 /// Returns an error when resolving chord modes failed.
 impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
@@ -17,6 +18,7 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 
     fn try_from(value: &CycleValue) -> Result<Self, String> {
         match value {
+            CycleValue::Null => Ok(vec![None]),
             CycleValue::Hold => Ok(vec![None]),
             CycleValue::Rest => Ok(vec![new_note(Note::OFF)]),
             CycleValue::Float(_f) => Ok(vec![None]),
@@ -44,28 +46,52 @@ impl TryFrom<&CycleValue> for Vec<Option<NoteEvent>> {
 
 // -------------------------------------------------------------------------------------------------
 
+impl Parameter {
+    /// Convert a [`Parameter`] value to a [`CycleValue`].
+    pub fn into_var(&self, enum_sub_cycles: &[CycleSubCycle]) -> CycleSubCycle {
+        match self.parameter_type() {
+            ParameterType::Boolean => CycleSubCycle::integer((self.value() >= 0.5) as i32),
+            ParameterType::Float => CycleSubCycle::float(self.value()),
+            ParameterType::Integer => CycleSubCycle::integer(self.value().round() as i32),
+            ParameterType::Enum => enum_sub_cycles[self.value().round() as usize].clone(),
+        }
+    }
+
+    /// Parse enum parameter values into sub-cycle results.
+    pub fn parse_subcycles(&self) -> Vec<Result<CycleSubCycle, String>> {
+        match self.parameter_type() {
+            ParameterType::Enum => self
+                .value_strings()
+                .iter()
+                .map(|string| {
+                    CycleSubCycle::from(string).map_err(|err| {
+                        format!(
+                            "Failed to convert enum parameter value '{string}' to sub-cycle: {err}"
+                        )
+                    })
+                })
+                .collect(),
+            _ => vec![],
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------------
+
 // Conversion helpers for cycle targets
-fn float_value_in_range<Range>(
-    maybe_float: &Option<f64>,
-    name: &'static str,
-    range: Range,
-) -> Result<f32, String>
+fn float_value_in_range<Range>(float: &f64, name: &'static str, range: Range) -> Result<f32, String>
 where
     Range: RangeBounds<f32> + std::fmt::Debug,
 {
-    maybe_float
-        .map(|v| v as f32)
-        .ok_or_else(|| format!("{} property must be a number value", name))
-        .and_then(|v| {
-            if range.contains(&v) {
-                Ok(v)
-            } else {
-                Err(format!(
-                    "{} property must be in range [{:?}] but is '{}'",
-                    name, range, v
-                ))
-            }
-        })
+    let v = *float as f32;
+    if range.contains(&v) {
+        Ok(v)
+    } else {
+        Err(format!(
+            "{} property must be in range [{:?}] but is '{}'",
+            name, range, v
+        ))
+    }
 }
 
 fn integer_value_in_range<Range>(
@@ -105,7 +131,7 @@ pub(crate) fn apply_cycle_note_properties(
                     note_event.instrument = Some(instrument);
                 }
             }
-            CycleTarget::Named(name, value) => match name.as_bytes() {
+            CycleTarget::NamedFloat(name, value) => match name.as_bytes() {
                 b"v" => {
                     let volume = float_value_in_range(value, "volume", 0.0..=1.0)?;
                     for note_event in note_events.iter_mut().flatten() {
@@ -138,6 +164,9 @@ pub(crate) fn apply_cycle_note_properties(
                             + "prefixes here.");
                 }
             },
+            CycleTarget::Named(name) => {
+                return Err(format!("{} property must be a number value", name))
+            }
         }
     }
     Ok(())
@@ -244,14 +273,20 @@ impl CycleNoteEvents {
 #[derive(Clone, Debug)]
 pub struct CycleEmitter {
     cycle: Cycle,
+    parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
 }
 
 impl CycleEmitter {
     /// Create a new cycle emitter from the given precompiled cycle.
     pub(crate) fn new(cycle: Cycle) -> Self {
+        let parameters = vec![];
         let mappings = HashMap::new();
-        Self { cycle, mappings }
+        Self {
+            cycle,
+            parameters,
+            mappings,
+        }
     }
 
     /// Try creating a new cycle emitter from the given mini notation string.
@@ -284,7 +319,7 @@ impl CycleEmitter {
     /// Generate a note event from a single cycle event, applying mappings if necessary
     fn map_note_event(&mut self, event: CycleEvent) -> Result<Vec<Option<NoteEvent>>, String> {
         let mut note_events = {
-            if let Some(note_events) = self.mappings.get(event.string()) {
+            if let Some(note_events) = self.mappings.get(event.as_str().as_ref()) {
                 // apply custom note mappings
                 note_events.clone()
             } else {
@@ -300,6 +335,12 @@ impl CycleEmitter {
     /// Generate next batch of events from the next cycle run.
     /// Converts cycle events to note events and flattens channels into note columns.
     fn generate(&mut self) -> Vec<EmitterEvent> {
+        // inject parameter values into the cycle as variables
+        for (parameter_ref, enum_values) in &self.parameters {
+            let parameter = parameter_ref.borrow();
+            self.cycle
+                .set_var(parameter.id(), parameter.into_var(enum_values));
+        }
         // run the cycle event generator
         let events = {
             match self.cycle.generate() {
@@ -343,8 +384,25 @@ impl Emitter for CycleEmitter {
         // nothing to do
     }
 
-    fn set_parameters(&mut self, _parameters: ParameterSet) {
-        // nothing to do
+    fn set_parameters(&mut self, parameters: ParameterSet) {
+        // parse and unwrap cycle values
+        self.parameters = parameters
+            .iter()
+            .map(|parameter| {
+                (
+                    Rc::clone(&parameter),
+                    parameter
+                        .borrow()
+                        .parse_subcycles()
+                        .into_iter()
+                        .map(|result| {
+                            // we got no way indicate runtime errors here, so just panic
+                            result.unwrap_or_else(|err| panic!("{err}"))
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
     }
 
     fn run(&mut self, _pulse: RhythmEvent, emit_event: bool) -> Option<Vec<EmitterEvent>> {
@@ -378,4 +436,234 @@ pub fn new_cycle_emitter(input: &str) -> Result<CycleEmitter, String> {
 
 pub fn new_cycle_emitter_with_seed(input: &str, seed: u64) -> Result<CycleEmitter, String> {
     CycleEmitter::from_mini_with_seed(input, seed)
+}
+
+// -------------------------------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Parameter;
+    use std::{cell::RefCell, rc::Rc};
+
+    use pretty_assertions::assert_eq;
+
+    fn run_emitter(
+        emitter: &mut CycleEmitter,
+    ) -> Result<Vec<EmitterEvent>, Box<dyn std::error::Error>> {
+        emitter
+            .run(
+                RhythmEvent {
+                    value: 1.0,
+                    step_time: 1.0,
+                },
+                true,
+            )
+            .ok_or("No events emitted".into())
+    }
+
+    #[test]
+    fn parameter_conversion() -> Result<(), Box<dyn std::error::Error>> {
+        // floats
+        let param = Rc::new(RefCell::new(Parameter::with_float(
+            "velocity",
+            "",
+            "",
+            0.0..=1.0,
+            0.8,
+        )));
+        let mut variable = new_cycle_emitter("a:v$velocity")?;
+        variable.set_parameters(vec![Rc::clone(&param)]);
+        let mut expected = new_cycle_emitter("a:v0.8")?;
+        assert_eq!(run_emitter(&mut variable)?, run_emitter(&mut expected)?);
+
+        // integers
+        let param = Rc::new(RefCell::new(Parameter::with_integer(
+            "steps",
+            "",
+            "",
+            1..=8,
+            3,
+        )));
+        let mut variable = new_cycle_emitter("a*$steps")?;
+        variable.set_parameters(vec![Rc::clone(&param)]);
+        let mut expected = new_cycle_emitter("a*3")?;
+        assert_eq!(run_emitter(&mut variable)?, run_emitter(&mut expected)?);
+
+        // bool
+        let param = Rc::new(RefCell::new(Parameter::with_boolean(
+            "enabled", "", "", true,
+        )));
+        let mut variable = new_cycle_emitter("a*$enabled")?;
+        variable.set_parameters(vec![Rc::clone(&param)]);
+        let mut expected = new_cycle_emitter("a*1")?;
+        assert_eq!(run_emitter(&mut variable)?, run_emitter(&mut expected)?);
+
+        // enum
+        let param = Rc::new(RefCell::new(Parameter::with_enum(
+            "sample",
+            "",
+            "",
+            vec!["kick".to_string(), "snare".to_string()],
+            "snare".to_string(),
+        )));
+        let mut variable = new_cycle_emitter("$sample")?;
+        variable.set_parameters(vec![Rc::clone(&param)]);
+        let mut expected = new_cycle_emitter("snare")?;
+        // NB: both will be `None` here as there are no mappings...
+        assert_eq!(run_emitter(&mut variable)?, run_emitter(&mut expected)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parameter_enum_values() -> Result<(), Box<dyn std::error::Error>> {
+        let param = Rc::new(RefCell::new(Parameter::with_enum(
+            "enum",
+            "",
+            "",
+            vec!["c4".to_string(), "[c4 c5]*4".to_string()],
+            "[c4 c5]*4".to_string(),
+        )));
+        let mut emitter = new_cycle_emitter("$enum")?;
+        emitter.set_parameters(vec![Rc::clone(&param)]);
+
+        let mut expected = new_cycle_emitter("[c4 c5]*4")?;
+        assert_eq!(run_emitter(&mut emitter)?, run_emitter(&mut expected)?);
+
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn parameter_enum_values_error() {
+        let param = Rc::new(RefCell::new(Parameter::with_enum(
+            "enum",
+            "",
+            "",
+            vec!["c4".to_string(), "broken]".to_string()],
+            "c4".to_string(),
+        )));
+        let mut variable = new_cycle_emitter("$enum").unwrap();
+        variable.set_parameters(vec![Rc::clone(&param)]); // this should throw
+    }
+
+    #[test]
+    fn parameter_value_changes() -> Result<(), Box<dyn std::error::Error>> {
+        let param = Rc::new(RefCell::new(Parameter::with_float(
+            "velocity",
+            "",
+            "",
+            0.0..=1.0,
+            0.8,
+        )));
+        let mut emitter = new_cycle_emitter("a:v$velocity")?;
+        emitter.set_parameters(vec![Rc::clone(&param)]);
+
+        // initial value
+        let mut expected = new_cycle_emitter("a:v0.8")?;
+        assert_eq!(run_emitter(&mut emitter)?, run_emitter(&mut expected)?);
+
+        // changed parameter value
+        param.borrow_mut().set_value(0.5);
+        let mut expected = new_cycle_emitter("a:v0.5")?;
+        assert_eq!(run_emitter(&mut emitter)?, run_emitter(&mut expected)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn note_mappings() -> Result<(), Box<dyn std::error::Error>> {
+        // single note mapping
+        let mut emitter = new_cycle_emitter("bd sd")?.with_mappings(&[
+            ("bd", vec![new_note(Note::C4)]),
+            ("sd", vec![new_note(Note::D4)]),
+        ]);
+        let events = run_emitter(&mut emitter)?;
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event, Event::NoteEvents(vec![new_note(Note::C4)]));
+        assert_eq!(events[1].event, Event::NoteEvents(vec![new_note(Note::D4)]));
+
+        // multi note mapping
+        let mut emitter = new_cycle_emitter("x")?
+            .with_mappings(&[("x", vec![new_note(Note::C4), new_note(Note::E4)])]);
+        let events = run_emitter(&mut emitter)?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].event,
+            Event::NoteEvents(vec![new_note(Note::C4), new_note(Note::E4)])
+        );
+
+        // mapping with rest (None = empty note)
+        let mut emitter = new_cycle_emitter("a b")?
+            .with_mappings(&[("a", vec![new_note(Note::C4)]), ("b", vec![None])]);
+        let events = run_emitter(&mut emitter)?;
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event, Event::NoteEvents(vec![new_note(Note::C4)]));
+        assert_eq!(events[1].event, Event::NoteEvents(vec![None]));
+
+        // mapping combined with targets
+        let mut emitter =
+            new_cycle_emitter("bd:v0.5")?.with_mappings(&[("bd", vec![new_note(Note::C4)])]);
+        let events = run_emitter(&mut emitter)?;
+        assert_eq!(events.len(), 1);
+        if let Event::NoteEvents(notes) = &events[0].event {
+            let event = notes[0].clone();
+            assert_eq!(event, new_note((Note::C4, None, None, 0.5)));
+        } else {
+            panic!("expected NoteEvents");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn note_mappings_with_parameters() -> Result<(), Box<dyn std::error::Error>> {
+        let param = Rc::new(RefCell::new(Parameter::with_float(
+            "vel",
+            "",
+            "",
+            0.0..=1.0,
+            0.7,
+        )));
+        let mut emitter =
+            new_cycle_emitter("bd:v$vel")?.with_mappings(&[("bd", vec![new_note(Note::C4)])]);
+        emitter.set_parameters(vec![Rc::clone(&param)]);
+        let events = run_emitter(&mut emitter)?;
+        if let Event::NoteEvents(notes) = &events[0].event {
+            let event = notes[0].clone();
+            assert_eq!(event, new_note((Note::C4, None, None, 0.7)));
+        } else {
+            panic!("expected NoteEvents");
+        }
+
+        // change parameter value
+        param.borrow_mut().set_value(0.3);
+        let events = run_emitter(&mut emitter)?;
+        if let Event::NoteEvents(notes) = &events[0].event {
+            let event = notes[0].clone();
+            assert_eq!(event, new_note((Note::C4, None, None, 0.3)));
+        } else {
+            panic!("expected NoteEvents");
+        }
+
+        // mapped enum strings
+        let param = Rc::new(RefCell::new(Parameter::with_enum(
+            "sample",
+            "",
+            "",
+            vec!["kick".to_string(), "snare".to_string()],
+            "snare".to_string(),
+        )));
+        let mut emitter =
+            new_cycle_emitter("$sample")?.with_mappings(&[("snare", vec![new_note(Note::C4)])]);
+        emitter.set_parameters(vec![Rc::clone(&param)]);
+        let mut expected =
+            new_cycle_emitter("snare")?.with_mappings(&[("snare", vec![new_note(Note::C4)])]);
+        let emitter_result = run_emitter(&mut emitter)?;
+        let expected_result = run_emitter(&mut expected)?;
+        assert_eq!(emitter_result, expected_result);
+
+        Ok(())
+    }
 }

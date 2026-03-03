@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use num_traits::ToPrimitive;
 
@@ -10,8 +10,8 @@ use crate::{
         LuaTimeoutHook,
     },
     emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents},
-    BeatTimeBase, Cycle, CycleEvent, CycleValue, Emitter, EmitterEvent, Event, NoteEvent,
-    ParameterSet, RhythmEvent,
+    BeatTimeBase, Cycle, CycleEvent, CycleSubCycle, CycleValue, Emitter, EmitterEvent, Event,
+    NoteEvent, Parameter, ParameterSet, RhythmEvent,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -20,12 +20,13 @@ use crate::{
 ///
 /// Channels from cycle are merged down into note events on different voices.
 /// Values in cycles can be mapped to notes with an optional mapping table or
-/// callbacks from from scripts.
+/// callbacks from scripts.
 ///
 /// See also [`CycleEmitter`](`super::cycle::CycleEmitter`)
 #[derive(Clone, Debug)]
 pub struct ScriptedCycleEmitter {
     cycle: Cycle,
+    parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
     mapping_callback: Option<LuaCallback>,
     timeout_hook: Option<LuaTimeoutHook>,
@@ -35,12 +36,14 @@ pub struct ScriptedCycleEmitter {
 impl ScriptedCycleEmitter {
     /// Return a new cycle with the given value mappings applied.
     pub fn with_mappings(cycle: Cycle, mappings: Vec<(String, Vec<Option<NoteEvent>>)>) -> Self {
+        let parameters = vec![];
         let mappings = mappings.into_iter().collect();
         let mapping_callback = None;
         let timeout_hook = None;
         let channel_steps = vec![];
         Self {
             cycle,
+            parameters,
             mappings,
             mapping_callback,
             timeout_hook,
@@ -58,6 +61,7 @@ impl ScriptedCycleEmitter {
         // create a new timeout_hook instance and reset it before calling the function
         let mut timeout_hook = timeout_hook.clone();
         timeout_hook.reset();
+        let parameters = vec![];
         let mappings = HashMap::new();
         // initialize emitter context for the function
         let mut mapping_callback = mapping_callback;
@@ -75,6 +79,7 @@ impl ScriptedCycleEmitter {
         let channel_steps = vec![];
         Ok(Self {
             cycle,
+            parameters,
             mappings,
             mapping_callback: Some(mapping_callback),
             timeout_hook: Some(timeout_hook),
@@ -99,9 +104,9 @@ impl ScriptedCycleEmitter {
                     step_length,
                 )?;
                 // call mapping function
-                let result = mapping_callback.call_with_arg(event.string())?;
+                let result = mapping_callback.call_with_arg(event.as_str().as_ref())?;
                 note_events_from_value(&result, None)?
-            } else if let Some(note_events) = self.mappings.get(event.string()) {
+            } else if let Some(note_events) = self.mappings.get(event.as_str().as_ref()) {
                 // apply custom note mapping
                 note_events.clone()
             } else {
@@ -116,7 +121,7 @@ impl ScriptedCycleEmitter {
         {
             return Err(LuaError::runtime(format!(
                 "invalid/unknown identifier in cycle: '{}'. please check for typos or add a custom mapping for it.",
-                event.string()
+                event.as_str()
             )));
         }
         // apply note properties from targets
@@ -129,6 +134,12 @@ impl ScriptedCycleEmitter {
     /// Generate next batch of events from the next cycle run.
     /// Converts cycle events to note events and flattens channels into note columns.
     fn generate(&mut self) -> Vec<EmitterEvent> {
+        // inject parameter values into cycle as variables
+        for (parameter_ref, enum_values) in &self.parameters {
+            let parameter = parameter_ref.borrow();
+            self.cycle
+                .set_var(parameter.id(), parameter.into_var(enum_values));
+        }
         // run the cycle event generator
         let events = {
             match self.cycle.generate() {
@@ -238,7 +249,7 @@ impl ScriptedCycleEmitter {
                             return;
                         }
                         // call mapping function
-                        if let Err(err) = mapping_callback.call_with_arg(event.string()) {
+                        if let Err(err) = mapping_callback.call_with_arg(event.as_str().as_ref()) {
                             mapping_callback.handle_error(&err);
                             return;
                         }
@@ -285,6 +296,36 @@ impl Emitter for ScriptedCycleEmitter {
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
+        // parse and unwrap cycle subcycle values from enum parameters
+        let unwrap_sub_cycle_result = |sub_cycle: Result<CycleSubCycle, String>| -> CycleSubCycle {
+            sub_cycle.unwrap_or_else(|err| {
+                // forwarding parse error as runtime errors
+                add_lua_callback_error(
+                    None,
+                    None,
+                    "cycle".to_string(),
+                    LuaError::RuntimeError(err),
+                );
+                // return rest value to prevent further runtime errors, which would mask the original error
+                CycleSubCycle::rest()
+            })
+        };
+        self.parameters = parameters
+            .iter()
+            .map(|parameter| {
+                (
+                    Rc::clone(&parameter),
+                    parameter
+                        .borrow()
+                        .parse_subcycles()
+                        .into_iter()
+                        .map(unwrap_sub_cycle_result)
+                        .collect(),
+                )
+            })
+            .collect();
+
+        // pass parameters to the mapping callback context
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();
         }
