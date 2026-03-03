@@ -16,10 +16,12 @@ note    = ${ (^"a"|^"b"|^"c"|^"d"|^"e"|^"f"|^"g") }
 pitch   = ${ note ~ mark? ~ octave? ~ !name}
 
 /// target properties such as volume "v0.1" (pattrns extension)
-target = ${ ("#" ~ integer) | (ASCII_ALPHA ~ float) }
+target = ${ ("#" ~ (integer | variable)) | (ASCII_ALPHA ~ (float | variable)) }
 /// patterns for assigning target keys with pattern on the right side
 target_name = ${ "#" | name }
 target_assign = { target_name ~ "=" ~ parameter }
+
+variable = ${ "$" ~ name}
 
 /// chord as pitch with mode string, separated via "'"
 mode    = ${ (ASCII_ALPHANUMERIC | "#" | "-" | "+" | "^")+ }
@@ -37,7 +39,8 @@ name = @{ ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "_")* }
 repeat = { "!" }
 
 /// possible literals for single steps
-single = { hold | rest | chord | target | pitch | number | name }
+constant = _{ hold | rest | chord | target | pitch | number | name }
+single = { constant  }
 
 choice_op = {"|"}
 stack_op = {","}
@@ -55,13 +58,13 @@ polymeter       = { "{" ~ sections? ~ "}" ~ polymeter_tail? }
 group           = _{ subdivision | alternating | polymeter }
 
 /// parameter for expressions with operators
-parameter        = _{ single | group }
-single_parameter = _{ single }
+parameter        = _{ single | group | variable }
+single_parameter = _{ single | variable }
 
 /// static operators
-op_replicate = ${ "!" ~ number }
-op_weight    = ${ "@" ~ number? }
-op_degrade   = ${ "?" ~ number? }
+op_replicate = ${ "!" ~ single_parameter }
+op_weight    = ${ "@" ~ single_parameter? }
+op_degrade   = ${ "?" ~ single_parameter? }
 
 /// dynamic operators
 op_fast      = { "*" ~ parameter }
@@ -73,11 +76,14 @@ op_bjorklund = { "(" ~ (single_parameter ~ ",")+ ~ single_parameter ~ ")" }
 /// all operators
 op           = _{ op_target | op_degrade | op_replicate | op_weight | op_fast | op_slow | op_bjorklund }
 
-expression   = { (single | group) ~ op+ }
+expression   = { (single | group | variable) ~ op+ }
 
-range      = ${ integer ~ ".." ~ integer }
+range      = ${ (integer | variable) ~ ".." ~ (integer | variable) }
 /// helper container that splits steps into sections
-section    = _{ ( expression | range | single | repeat | group)+ }
+section    = _{ ( expression | range | single | repeat | group | variable )+ }
 
 /// the root of the cycle
 mini = { SOI ~ sections? ~ EOI }
+
+/// parser for a single constant
+constant_literal = { SOI ~ constant ~ EOI }

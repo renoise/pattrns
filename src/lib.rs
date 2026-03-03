@@ -59,7 +59,8 @@ pub use crate::{
     rhythm::{Rhythm, RhythmEvent},
     sequence::Sequence,
     tidal::{
-        Cycle, Event as CycleEvent, Span as CycleSpan, Target as CycleTarget, Value as CycleValue,
+        Constant as CycleValue, Cycle, Event as CycleEvent, Span as CycleSpan,
+        SubCycle as CycleSubCycle, Target as CycleTarget,
     },
     time::{
         BeatTimeBase, BeatTimeStep, ExactSampleTime, SampleTime, SampleTimeBase, SampleTimeDisplay,
