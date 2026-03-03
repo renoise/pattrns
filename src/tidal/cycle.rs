@@ -264,7 +264,7 @@ impl Event {
 }
 
 /// Time span for musical events within Cycles.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Span {
     start: Fraction,
     end: Fraction,
@@ -483,6 +483,7 @@ impl Step {
     fn subdivision(steps: Vec<Self>) -> Self {
         Self::Subdivision(Subdivision { steps })
     }
+
     fn alternating(steps: Vec<Self>) -> Self {
         Self::polymeter(
             vec![steps],
@@ -1023,19 +1024,19 @@ impl Events {
         })
     }
 
-    fn collapsed_poly(events: Vec<Events>, length: Fraction, span: Span) -> Self {
-        match events.len() {
+    fn poly(channels: Vec<Events>, length: Fraction, span: Span) -> Self {
+        match channels.len() {
             0 => Self::empty(),
-            1 => events.first().expect("len is 1").to_owned(),
+            1 => channels.first().expect("len is 1").to_owned(),
             _ => Self::Poly(PolyEvents {
                 length,
                 span,
-                channels: events,
+                channels,
             }),
         }
     }
 
-    fn collapsed_multi(events: Vec<Events>, length: Fraction, span: Span) -> Self {
+    fn multi(events: Vec<Events>, length: Fraction, span: Span) -> Self {
         match events.len() {
             0 => Self::empty(),
             1 => events.first().expect("len is 1").to_owned(),
@@ -1063,9 +1064,9 @@ impl Events {
         }
     }
 
-    fn first(&self) -> Option<Event> {
+    fn first(&self) -> Option<&Event> {
         match self {
-            Events::Single(s) => Some(s.clone()),
+            Events::Single(s) => Some(s),
             Events::Multi(m) => m.events.first().and_then(Self::first),
             Events::Poly(p) => p.channels.first().and_then(Self::first),
         }
@@ -1073,21 +1074,18 @@ impl Events {
 
     fn get_span(&self) -> Span {
         match self {
-            Events::Single(s) => s.span.clone(),
-            Events::Multi(m) => m.span.clone(),
-            Events::Poly(p) => p.span.clone(),
+            Events::Single(s) => s.span,
+            Events::Multi(m) => m.span,
+            Events::Poly(p) => p.span,
         }
     }
 
     /// Fits a list of events into a Span of 0..1
-    fn subdivide_lengths(events: &mut Vec<Events>) {
+    fn subdivide_lengths(events: &mut [Events]) {
         let mut length = Fraction::ZERO;
-        for e in &mut *events {
-            match e {
-                Events::Single(s) => length += s.length,
-                Events::Multi(m) => length += m.length,
-                Events::Poly(p) => length += p.length,
-            }
+
+        for e in events.iter_mut() {
+            length += e.get_length();
         }
         let step_size = if length != Fraction::ZERO {
             Fraction::ONE / length
@@ -1095,22 +1093,25 @@ impl Events {
             Fraction::ZERO
         };
         let mut start = Fraction::ZERO;
-        for e in &mut *events {
+        for e in events.iter_mut() {
             match e {
                 Events::Single(s) => {
                     s.length *= step_size;
-                    s.span = Span::new(start, start + s.length);
-                    start += s.length
+                    s.span.start = start;
+                    s.span.end = start + s.length;
+                    start = s.span.end
                 }
                 Events::Multi(m) => {
                     m.length *= step_size;
-                    m.span = Span::new(start, start + m.length);
-                    start += m.length
+                    m.span.start = start;
+                    m.span.end = start + m.length;
+                    start = m.span.end
                 }
                 Events::Poly(p) => {
                     p.length *= step_size;
-                    p.span = Span::new(start, start + p.length);
-                    start += p.length
+                    p.span.start = start;
+                    p.span.end = start + p.length;
+                    start = p.span.end
                 }
             }
         }
@@ -1122,35 +1123,14 @@ impl Events {
     {
         match self {
             Events::Multi(m) => {
-                let mut filtered = Vec::with_capacity(m.events.len());
-                for e in &mut m.events {
-                    match e {
-                        Events::Single(s) => {
-                            if predicate(s) {
-                                filtered.push(e.clone())
-                            }
-                        }
-                        _ => {
-                            if e.filter_mut(predicate) {
-                                filtered.push(e.clone())
-                            }
-                        }
-                    }
-                }
-                m.events = filtered;
+                m.events.retain_mut(|e| e.filter_mut(predicate));
                 !m.events.is_empty()
             }
             Events::Poly(p) => {
-                let mut filtered = Vec::with_capacity(p.channels.len());
-                for e in &mut p.channels {
-                    if e.filter_mut(predicate) {
-                        filtered.push(e.clone())
-                    }
-                }
-                p.channels = filtered;
+                p.channels.retain_mut(|e| e.filter_mut(predicate));
                 !p.channels.is_empty()
             }
-            Events::Single(_) => true,
+            Events::Single(e) => predicate(e),
         }
     }
 
@@ -1240,20 +1220,20 @@ impl Events {
         }
     }
 
-    /// Recursively collapses Multi and Poly Events into vectors of Single Events
-    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
+    /// recursively collapses Multi and Poly Events into vectors of Single Events
+    fn flatten(self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
         if channels.len() <= *channel {
             channels.push(vec![])
         }
         match self {
-            Events::Single(s) => channels[*channel].push(s.clone()),
+            Events::Single(s) => channels[*channel].push(s),
             Events::Multi(m) => {
-                for e in &m.events {
+                for e in m.events {
                     e.flatten(channels, channel);
                 }
             }
             Events::Poly(p) => {
-                for e in &p.channels {
+                for e in p.channels {
                     e.flatten(channels, channel);
                     *channel += 1
                 }
@@ -1304,15 +1284,15 @@ impl Events {
 
     /// Removes Holds by extending preceding events and filters out Rests
     fn merge(channels: &mut [Vec<Event>]) {
-        for events in &mut *channels {
+        for events in channels.iter_mut() {
             Self::merge_holds(events);
         }
-        for events in channels {
+        for events in channels.iter_mut() {
             Self::merge_rests(events);
         }
     }
 
-    fn export(&self) -> Vec<Vec<Event>> {
+    fn export(self) -> Vec<Vec<Event>> {
         let mut channels = vec![];
         self.flatten(&mut channels, &mut 0);
         Self::merge(&mut channels);
@@ -1872,7 +1852,7 @@ impl Cycle {
             cycles.push(events)
         }
         let mut events = Events::Multi(MultiEvents {
-            span: span.clone(),
+            span: *span,
             length: span.length(),
             events: cycles,
         });
@@ -2019,9 +1999,10 @@ impl Cycle {
         let mut events = Self::output(step, state, cycle, limit, true, vars)?;
         events.transform_spans(&events.get_span());
         let mut channels = vec![];
+        let span = events.get_span();
         events.flatten(&mut channels, &mut 0);
         Events::merge(&mut channels);
-        Ok((channels, events.get_span()))
+        Ok((channels, span))
     }
 
     // generate events from Target expressions
@@ -2066,19 +2047,15 @@ impl Cycle {
                     for left_channel in left_channels.iter() {
                         let mut cloned_left = left_channel.clone();
                         Self::apply_targets(&mut cloned_left, &channel, target_kind);
-                        channel_events.push(Events::Multi(MultiEvents {
-                            length: left_span.length(),
-                            span: left_span.clone(),
-                            events: cloned_left.into_iter().map(Events::Single).collect(),
-                        }));
+                        channel_events.push(Events::multi(
+                            cloned_left.into_iter().map(Events::Single).collect(),
+                            left_span.length(),
+                            left_span,
+                        ));
                     }
                 }
                 // put all the resulting events back together
-                Ok(Events::collapsed_poly(
-                    channel_events,
-                    left_span.length(),
-                    left_span,
-                ))
+                Ok(Events::poly(channel_events, left_span.length(), left_span))
             }
         }
     }
@@ -2108,6 +2085,8 @@ impl Cycle {
                 // generate and flatten the events for the right side of the expression
                 let mut events = Self::output(mult, state, cycle, limit, overlap, vars)?;
                 events.transform_spans(&Span::default());
+                let length = events.get_length();
+                let span = events.get_span();
                 let channels = events.export();
 
                 // extract a float to use as mult from each event and output the step with it
@@ -2123,19 +2102,11 @@ impl Cycle {
                         partial_events.crop(&event.span, overlap);
                         multi_events.push(partial_events);
                     }
-                    channel_events.push(Events::collapsed_multi(
-                        multi_events,
-                        events.get_length(),
-                        events.get_span(),
-                    ));
+                    channel_events.push(Events::multi(multi_events, length, span));
                 }
 
                 // put all the resulting events back together
-                Ok(Events::collapsed_poly(
-                    channel_events,
-                    events.get_length(),
-                    events.get_span(),
-                ))
+                Ok(Events::poly(channel_events, length, span))
             }
         }
     }
@@ -2195,7 +2166,7 @@ impl Cycle {
                     }
 
                     Events::subdivide_lengths(&mut events);
-                    Events::collapsed_multi(events, Fraction::ONE, Span::default())
+                    Events::multi(events, Fraction::ONE, Span::default())
                 }
             }
             Step::Weighted(we) => {
@@ -2258,7 +2229,7 @@ impl Cycle {
                         )?;
                         channels.push(events)
                     }
-                    Events::collapsed_poly(channels, Fraction::ONE, Span::default())
+                    Events::poly(channels, Fraction::ONE, Span::default())
                 } else {
                     let Some(first) = pm.stack.first() else {
                         return Ok(Events::empty());
@@ -2269,7 +2240,7 @@ impl Cycle {
                         Constant::Float((first_length).to_f64().unwrap_or_default()),
                         None,
                     );
-                    let mut channels = vec![];
+                    let mut channels = Vec::with_capacity(pm.stack.len());
                     for (i, sub) in pm.stack.iter().enumerate() {
                         let length = if i == 0 {
                             first_length
@@ -2288,7 +2259,7 @@ impl Cycle {
                         )?;
                         channels.push(events)
                     }
-                    Events::collapsed_poly(channels, Fraction::ONE, Span::default())
+                    Events::poly(channels, Fraction::ONE, Span::default())
                 }
             }
             Step::Stack(st) => {
@@ -2299,7 +2270,7 @@ impl Cycle {
                     for s in &st.stack {
                         channels.push(Self::output(s, state, cycle, limit, overlap, vars)?)
                     }
-                    Events::collapsed_poly(channels, Fraction::ONE, Span::default())
+                    Events::poly(channels, Fraction::ONE, Span::default())
                 }
             }
             Step::Degrade(d) => {
@@ -2362,7 +2333,7 @@ impl Cycle {
                 }
 
                 Events::subdivide_lengths(&mut events);
-                Events::collapsed_multi(events, Fraction::ONE, Span::default())
+                Events::multi(events, Fraction::ONE, Span::default())
             }
 
             Step::Ranged(r) => {
