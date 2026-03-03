@@ -314,7 +314,7 @@ impl Emitter for ScriptedCycleEmitter {
             .iter()
             .map(|parameter| {
                 (
-                    Rc::clone(&parameter),
+                    Rc::clone(parameter),
                     parameter
                         .borrow()
                         .parse_subcycles()
