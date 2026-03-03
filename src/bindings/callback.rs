@@ -212,13 +212,14 @@ impl LuaCallback {
     }
 
     /// Name of the source file for errors.
+    #[allow(clippy::misnamed_getters)]
     pub fn source(&self) -> Option<String> {
         self.function.info().short_src
     }
 
     /// Line number in source where the function is defined for errors.
     pub fn source_line(&self) -> Option<usize> {
-        self.function.info().line_defined.map(usize::from)
+        self.function.info().line_defined
     }
 
     /// Name of the inner function for errors. Usually will be an anonymous function.

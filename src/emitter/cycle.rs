@@ -390,7 +390,7 @@ impl Emitter for CycleEmitter {
             .iter()
             .map(|parameter| {
                 (
-                    Rc::clone(&parameter),
+                    Rc::clone(parameter),
                     parameter
                         .borrow()
                         .parse_subcycles()
