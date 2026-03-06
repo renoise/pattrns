@@ -2,12 +2,15 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use num_traits::ToPrimitive;
 
-use mlua::prelude::{LuaError, LuaResult};
+use mlua::{
+    prelude::{LuaError, LuaResult},
+    Value,
+};
 
 use crate::{
     bindings::{
-        add_lua_callback_error, note_events_from_value, ContextPlaybackState, LuaCallback,
-        LuaTimeoutHook,
+        add_lua_callback_error, assign_cycle_vars_from_table, note_events_from_value,
+        ContextPlaybackState, LuaCallback, LuaTimeoutHook,
     },
     emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents},
     BeatTimeBase, Cycle, CycleEvent, CycleSubCycle, CycleValue, Emitter, EmitterEvent, Event,
@@ -29,13 +32,18 @@ pub struct ScriptedCycleEmitter {
     parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
     mappings: HashMap<String, Vec<Option<NoteEvent>>>,
     mapping_callback: Option<LuaCallback>,
+    variables_callback: Option<LuaCallback>,
     timeout_hook: Option<LuaTimeoutHook>,
     channel_steps: Vec<usize>,
 }
 
 impl ScriptedCycleEmitter {
     /// Return a new cycle with the given value mappings applied.
-    pub fn with_mappings(cycle: Cycle, mappings: Vec<(String, Vec<Option<NoteEvent>>)>) -> Self {
+    pub(crate) fn with_mappings(
+        cycle: Cycle,
+        variables_callback: Option<LuaCallback>,
+        mappings: Vec<(String, Vec<Option<NoteEvent>>)>,
+    ) -> Self {
         let parameters = vec![];
         let mappings = mappings.into_iter().collect();
         let mapping_callback = None;
@@ -46,6 +54,7 @@ impl ScriptedCycleEmitter {
             parameters,
             mappings,
             mapping_callback,
+            variables_callback,
             timeout_hook,
             channel_steps,
         }
@@ -54,6 +63,7 @@ impl ScriptedCycleEmitter {
     /// Return a new cycle with the given mapping callback applied.
     pub(crate) fn with_mapping_callback(
         cycle: Cycle,
+        variables_callback: Option<LuaCallback>,
         timeout_hook: &LuaTimeoutHook,
         mapping_callback: LuaCallback,
         time_base: &BeatTimeBase,
@@ -82,6 +92,7 @@ impl ScriptedCycleEmitter {
             parameters,
             mappings,
             mapping_callback: Some(mapping_callback),
+            variables_callback,
             timeout_hook: Some(timeout_hook),
             channel_steps,
         })
@@ -140,6 +151,42 @@ impl ScriptedCycleEmitter {
             self.cycle
                 .set_var(parameter.id(), parameter.into_var(enum_values));
         }
+
+        if let Some(variables_callback) = &mut self.variables_callback {
+            let playback_state = ContextPlaybackState::Running;
+            if let Err(err) = variables_callback.set_context_playback_state(playback_state) {
+                variables_callback.handle_error(&err);
+            }
+            if let Err(err) = variables_callback
+                .set_context_parameters(self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect())
+            {
+                variables_callback.handle_error(&err);
+            }
+
+            match variables_callback.call() {
+                Err(err) => {
+                    variables_callback.handle_error(&err);
+                }
+                Ok(value) => match value {
+                    Value::Table(table) => {
+                        if let Err(err) = assign_cycle_vars_from_table(&mut self.cycle, table) {
+                            add_lua_callback_error(None, None, "vars".to_string(), err);
+                        }
+                    }
+                    _ => {
+                        add_lua_callback_error(
+                            None,
+                            None,
+                            "vars".to_string(),
+                            LuaError::RuntimeError(
+                                "vars should return a table of variables".to_string(),
+                            ),
+                        );
+                    }
+                },
+            }
+        }
+
         // run the cycle event generator
         let events = {
             match self.cycle.generate() {

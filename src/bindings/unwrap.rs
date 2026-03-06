@@ -10,6 +10,7 @@ use crate::{
         parameter::ParameterUserData, sequence::SequenceUserData, LuaTimeoutHook,
     },
     prelude::*,
+    CycleSubCycle,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1031,6 +1032,45 @@ pub(crate) fn gate_from_value(
 
 // -------------------------------------------------------------------------------------------------
 
+fn cycle_to_lua_error(arg: &LuaValue, string: String) -> LuaError {
+    LuaError::FromLuaConversionError {
+        from: arg.type_name(),
+        to: "cycle variable".to_string(),
+        message: Some(string),
+    }
+}
+
+fn subcycle_from_value(arg: &LuaValue) -> LuaResult<CycleSubCycle> {
+    let subcycle_result = match arg {
+        LuaValue::Integer(x) => {
+            Ok(CycleSubCycle::integer((*x).try_into().map_err(|err| {
+                cycle_to_lua_error(arg, format!("{err}"))
+            })?))
+        }
+        LuaValue::Number(x) => Ok(CycleSubCycle::float(*x)),
+        LuaValue::String(x) => CycleSubCycle::from(&x.to_str()?),
+        LuaValue::Boolean(x) => Ok(CycleSubCycle::integer(if *x { 1 } else { 0 })),
+        LuaValue::Nil => Ok(CycleSubCycle::rest()),
+        // TODO convert from note table presentation to cycle note?
+        _ => {
+            return Err(LuaError::FromLuaConversionError {
+                from: arg.type_name(),
+                to: "cycle variable".to_string(),
+                message: Some("type couldn't be converted to a sub cycle".to_string()),
+            })
+        }
+    };
+
+    subcycle_result.map_err(|err| cycle_to_lua_error(arg, err))
+}
+
+pub(crate) fn assign_cycle_vars_from_table(cycle: &mut Cycle, table: LuaTable) -> LuaResult<()> {
+    for (k, v) in table.pairs::<LuaValue, LuaValue>().flatten() {
+        cycle.set_var(&k.to_string()?, subcycle_from_value(&v)?)
+    }
+    Ok(())
+}
+
 pub(crate) fn emitter_from_value(
     lua: &Lua,
     timeout_hook: &LuaTimeoutHook,
@@ -1049,10 +1089,16 @@ pub(crate) fn emitter_from_value(
                 // NB: take instead of cloning: cycle userdata has no other usage than being defined
                 let userdata = userdata.take::<CycleUserData>()?;
                 let cycle = userdata.cycle;
+                let variables_callback = if let Some(func) = userdata.variables_function {
+                    Some(LuaCallback::new(lua, func)?)
+                } else {
+                    None
+                };
                 if let Some(mapping_function) = userdata.mapping_function {
                     let mapping_callback = LuaCallback::new(lua, mapping_function)?;
                     let emitter = ScriptedCycleEmitter::with_mapping_callback(
                         cycle,
+                        variables_callback,
                         timeout_hook,
                         mapping_callback,
                         time_base,
@@ -1060,7 +1106,8 @@ pub(crate) fn emitter_from_value(
                     Ok(Box::new(emitter))
                 } else {
                     let mappings = userdata.mappings;
-                    let emitter = ScriptedCycleEmitter::with_mappings(cycle, mappings);
+                    let emitter =
+                        ScriptedCycleEmitter::with_mappings(cycle, variables_callback, mappings);
                     Ok(Box::new(emitter))
                 }
             } else {

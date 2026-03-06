@@ -163,6 +163,16 @@ impl Cycle {
         }
     }
 
+    pub fn get_var(&self, name: &str) -> Option<SubCycle> {
+        self.vars
+            .as_ref()
+            .and_then(|vars| vars.get(name).cloned().map(SubCycle::new))
+    }
+
+    pub fn clear_vars(&mut self) {
+        self.vars = None
+    }
+
     /// Check if a cycle may give different outputs between cycles.
     pub fn is_stateful(&self) -> bool {
         // TODO improve: * and / can change the output, <1> does not etc..
