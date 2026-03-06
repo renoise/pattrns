@@ -1,8 +1,8 @@
 use mlua::prelude::*;
 
-use crate::{bindings::unwrap::assign_cycle_vars_from_table, event::NoteEvent, tidal::Cycle};
+use crate::{event::NoteEvent, tidal::Cycle};
 
-use super::unwrap::{bad_argument_error, note_events_from_value};
+use super::unwrap::{assign_cycle_vars_from_table, bad_argument_error, note_events_from_value};
 
 // ---------------------------------------------------------------------------------------------
 
@@ -83,10 +83,10 @@ impl LuaUserData for CycleUserData {
             }
             _ => Err(bad_argument_error(
                 None,
-                "map",
+                "var",
                 1,
                 format!(
-                    "map argument must be a table but is a '{}'",
+                    "var argument must be a table or a function but is a '{}'",
                     value.type_name()
                 )
                 .as_str(),
