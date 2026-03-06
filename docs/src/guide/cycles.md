@@ -190,6 +190,58 @@ return cycle("[bd*4], [_ sn]*2"):map(function(context, value)
 end)
 ```
 
+### Parameters and variables
+
+The [parameters](./parameters.md) you define will be made available for use inside the cycle string by adding `$` to the beginning of the name you used to create a parameter.
+
+```lua
+return pattern {
+  parameter = {
+    parameter.integer("repeat", 1, {1, 16})
+  },
+  -- every new cycle generated will be affected by
+  -- the current value of the repeat parameter
+  event = cycle("a*$repeat")
+}
+```
+
+When using [`enum`](../API/parameter.md#enum) parameters you can use entire cycles to be injected into a main cycle, which is handy for reusing and changing patterns on the fly.
+
+> Note, the cycles assigned to variables cannot contain other variables inside them
+
+```lua
+return pattern {
+  parameter = {
+    parameter.enum("part", "a", {
+      "a",
+      "a _ e ~",
+      "a e*3 a ~",
+      "<a e f> _ <f g a c> ~",
+    }),
+    parameter.enum("other", "c", {
+      "c",
+      "<c d>",
+      "[a g f e]/2 c",
+      "[b a g f]/2 e",
+    })
+  },
+  -- combine two monophonic parts together
+  -- and reuse the same thing at a different speed
+  event = cycle("$part, $other/4, ~ $other/16")
+}
+```
+
+If you want to use variables other than parameters, you can declare your own with the [`var`](../API/cycle.md#var) method on the result of `cycle`. This works similar to `map`, in that you can either supply a table with the desired variables or a function that returns a table, the latter will be called every time the cycle is used to generate a new batch of events.
+
+```lua
+return pattern {
+  event = cycle("[$note*3 $note*4 $note $note]:$instrument"):var({ note = "d3", instrument = 2 })
+}
+```
+
+TODO add function example
+
+
 ## Advanced Examples
 
 Chord progression 

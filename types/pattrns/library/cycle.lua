@@ -85,13 +85,36 @@ local Cycle = {}
 ---@nodiscard
 function Cycle:map(map) end
 
+---@alias CycleVarValue string|number|integer|boolean
+---@alias CycleVarMap {[string]: CycleVarValue}
+---@alias CycleVarFunction fun(context: CycleMapContext):CycleVarMap
+
+---Assign variables to be used inside the main cycle script via `$name` notation
+---
+---By default any parameter you define will be available to the cycle as a variable
+---but you can override and declare additional variables by passing in a table of them
+---or passing a function that can returns such a table.
+---
+---### examples:
+---```lua
+-----Using a static table
+---cycle("$a $a $b $a $b $b"):var({
+---  a = "c a f e"
+---  b = "e f a c"
+---})
+---```
+---@param variables CycleVarMap|CycleVarFunction
+---@return Cycle
+---@nodiscard
+function Cycle:var(variables) end
+
 ----------------------------------------------------------------------------------------------------
 
 ---Create a note sequence from a Tidal Cycles mini-notation string.
 ---
 ---`cycle` accepts a mini-notation as used by Tidal Cycles, with the following differences:
 ---* Stacks and random choices are valid without brackets (`a | b` is parsed as `[a | b]`)
----* `:` sets the instrument or remappable target instead of selecting samples but also 
+---* `:` sets the instrument or remappable target instead of selecting samples but also
 ---  allows setting note attributes such as instrument/volume/pan/delay (e.g. `c4:v0.1:p0.5`)
 ---* In bjorklund expressions, operators *within* and on the *right side* are not supported
 ---  (e.g. `bd(<3 2>, 8)` and `bd(3, 8)*2` are *not* supported)
