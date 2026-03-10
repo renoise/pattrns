@@ -49,11 +49,11 @@ split_op = {"."}
 sections = _{ section ~ ((stack_op | split_op | choice_op) ~ section)* }
 
 /// groups
-subdivision     = { "[" ~ sections? ~ "]" }
-alternating     = { "<" ~ sections? ~ ">" }
+subdivision     = { "[" ~ sections? ~ "]" ~ index_tail? }
+alternating     = { "<" ~ sections? ~ ">" ~ index_tail? }
 
-polymeter_tail  = { "%" ~  parameter }
-polymeter       = { "{" ~ sections? ~ "}" ~ polymeter_tail? }
+index_tail      = { "%" ~  parameter }
+polymeter       = { "{" ~ sections? ~ "}" ~ index_tail? }
 
 group           = _{ subdivision | alternating | polymeter }
 
