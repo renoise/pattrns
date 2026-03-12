@@ -27,7 +27,7 @@
 				"build",
 				"--example",
 				"play-script",
-				"--features=scripting,player,cpal-output"
+				"--features=scripting,lua-jit,player,cpal-output"
 			]
 		},
 		"program": "$ZED_WORKTREE_ROOT/target/debug/examples/play-script",

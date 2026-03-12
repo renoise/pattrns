@@ -1,6 +1,7 @@
 {
     "rust-analyzer.cargo.features": [
         "player",
+        "fundsp",
         "cpal-output",
         "scripting",
         "lua-jit"

@@ -53,6 +53,11 @@ impl Sequence {
         }
     }
 
+    /// Return the last sample time we've run to via `consume_events_until_time` or `advance_until_time`
+    pub fn current_time(&self) -> SampleTime {
+        self.sample_position
+    }
+
     /// Read-only access to the currently played back phrase.
     pub fn current_phrase(&self) -> Option<&Phrase> {
         self.phrases.get(self.phrase_index)

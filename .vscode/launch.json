@@ -12,7 +12,7 @@
         "args": [
           "build",
           "--example=play",
-          "--features=player,cpal-output",
+          "--features=player,fundsp,cpal-output",
         ],
         "filter": {
           "name": "play",
@@ -30,7 +30,7 @@
         "args": [
           "build",
           "--example=play-script",
-          "--features=player,cpal-output",
+          "--features=scripting,player,cpal-output",
         ],
         "filter": {
           "name": "play-script",

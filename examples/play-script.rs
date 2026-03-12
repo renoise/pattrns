@@ -1,18 +1,27 @@
 use std::{
     cell::RefCell,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use notify::{RecursiveMode, Watcher};
 use simplelog::*;
 
-use pattrns::prelude::*;
+use pattrns::{
+    bindings::new_pattern_from_file,
+    patterns::BeatTimePattern,
+    player::{
+        phonic::{generators, DefaultOutputDevice, Generator, GeneratorPlaybackOptions},
+        Player,
+    },
+    BeatTimeBase, BeatTimeStep, Phrase, Sequence,
+};
 
 // -------------------------------------------------------------------------------------------------
 
@@ -24,6 +33,8 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 
 // TODO: make this configurable with an cmd line arg
 const DEMO_PATH: &str = "./examples/assets";
+// Number of voices in each instrument's sampler
+const SAMPLER_VOICE_COUNT: usize = 32;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -43,33 +54,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         log::error!("init_logger error: {err:?}");
     });
 
+    // create sample player
+    let mut player = Player::new(DefaultOutputDevice::open()?, None)?;
+
     // fetch contents from demo dir
     log::info!("Searching for wav/script files in path '{DEMO_PATH}'...");
-    let sample_pool = Arc::new(SamplePool::new());
-    struct PatternEntry {
-        instrument_id: InstrumentId,
-        script_path: PathBuf,
-    }
-    let mut entries = vec![];
+    let mut script_paths = vec![];
+    let mut pattern_index = 0;
     for dir_entry in fs::read_dir(DEMO_PATH)?.flatten() {
         let path = dir_entry.path();
         if let Some(extension) = path.extension().map(|e| e.to_string_lossy()) {
             // collect all audio file's that have a lua file next to it
             if matches!(extension.as_bytes(), b"mp3" | b"wav" | b"flac") {
-                let script_path = path.clone().with_extension("lua");
+                let audio_file_path = path;
+                let script_path = audio_file_path.clone().with_extension("lua");
                 if script_path.exists() {
-                    let instrument_id = sample_pool.load_sample(path)?;
-                    entries.push(PatternEntry {
-                        instrument_id,
-                        script_path,
-                    });
+                    let sampler = generators::Sampler::from_file(
+                        audio_file_path,
+                        GeneratorPlaybackOptions::default().voices(SAMPLER_VOICE_COUNT),
+                        player.channel_count(),
+                        player.sample_rate(),
+                    )?
+                    .with_ahdsr(generators::AhdsrParameters::new(
+                        Duration::ZERO,
+                        Duration::ZERO,
+                        Duration::ZERO,
+                        1.0,
+                        Duration::from_millis(350),
+                    )?)?;
+                    player.set_generator(pattern_index, sampler.into_box(), None)?;
+                    script_paths.push(script_path);
+                    pattern_index += 1;
                 }
             }
         }
     }
-
-    // create sample player
-    let mut player = SamplePlayer::new(sample_pool, None)?;
 
     // set default time base config
     let beat_time = BeatTimeBase {
@@ -113,8 +132,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // build final phrase
-        let load = |instrument: Option<InstrumentId>, file_name: &Path| {
-            new_pattern_from_file(beat_time, instrument, file_name).unwrap_or_else(|err| {
+        let load = |file_name: &Path| {
+            new_pattern_from_file(beat_time, None, file_name).unwrap_or_else(|err| {
                 log::warn!(
                     "Script '{}' failed to compile:\n{}",
                     file_name.display(),
@@ -128,10 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let phrase = Phrase::new(
             beat_time,
-            entries
-                .iter()
-                .map(|e| load(Some(e.instrument_id), &e.script_path))
-                .collect(),
+            script_paths.iter().map(|path| load(path)).collect(),
             BeatTimeStep::Bar(4.0),
         );
 
@@ -145,7 +161,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut sequence,
             &beat_time,
             reset_playback_pos,
-            || script_files_changed.load(Ordering::Relaxed) || stop_running.load(Ordering::Relaxed),
+            {
+                || {
+                    script_files_changed.load(Ordering::Relaxed)
+                        || stop_running.load(Ordering::Relaxed)
+                }
+            },
         );
 
         // memorize previous sequence for swapping

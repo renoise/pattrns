@@ -1,13 +1,18 @@
 #![allow(clippy::missing_safety_doc)]
 
-use std::{
-    cell::RefCell, collections::HashMap, ffi, fs, path::Path, rc::Rc, sync::Arc, time::Duration,
-};
+use std::{cell::RefCell, collections::HashMap, ffi, fs, path::Path, rc::Rc, time::Duration};
 
 use emscripten_rs_sys::{emscripten_request_animation_frame_loop, emscripten_run_script};
 use serde::ser::SerializeStruct;
 
-use pattrns::prelude::*;
+use pattrns::{
+    player::phonic::{
+        generators::{AhdsrParameters, Sampler},
+        sources::PreloadedFileSource,
+        FilePlaybackOptions, Generator, GeneratorPlaybackOptions, DefaultOutputDevice
+    },
+    prelude::*,
+};
 
 // -------------------------------------------------------------------------------------------------
 
@@ -52,8 +57,10 @@ where
 /// Single sample asset, passed as JSON to the frontend.
 #[derive(serde::Serialize)]
 struct SampleEntry {
-    name: String,
     id: usize,
+    name: String,
+    #[serde(skip)]
+    file_source: PreloadedFileSource,
 }
 
 /// Single example script content section, passed as JSON to the frontend.
@@ -120,14 +127,13 @@ struct PlayingNote {
 /// The backend's global app state.
 struct Playground {
     playing: bool,
-    player: SamplePlayer,
-    sample_pool: Arc<SamplePool>,
+    player: Player,
     samples: Vec<SampleEntry>,
     sequence: Option<Sequence>,
     pattern: Option<Rc<RefCell<dyn Pattern>>>,
     time_base: BeatTimeBase,
     time_base_changed: bool,
-    instrument_id: Option<usize>,
+    instrument_index: Option<usize>,
     script_content: String,
     script_changed: bool,
     script_parameters: Vec<ScriptParameter>,
@@ -140,38 +146,66 @@ struct Playground {
 
 impl Playground {
     // Event scheduler read-ahead time (latency)
-    const PLAYBACK_PRELOAD_SECONDS: f64 = if cfg!(debug_assertions) { 0.5 } else { 0.25 };
+    const PLAYBACK_PRELOAD_TIME: Duration = if cfg!(debug_assertions) {
+        Duration::from_millis(500)
+    } else {
+        Duration::from_millis(250)
+    };
     // Max expected MIDI notes
     const NUM_MIDI_NOTES: usize = 127;
     // Path to our assets folder. see build.rs.
     const ASSETS_PATH: &str = "/assets";
 
+    // Default sample voice count.
+    const SAMPLER_VOICE_COUNT: usize = 32;
+    // Default sample AHDSR parameters.
+    fn default_ahdsr_parameters() -> AhdsrParameters {
+        AhdsrParameters::new(
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            1.0,
+            Duration::from_millis(350),
+        )
+        .expect("Failed to create default ahdsr parameters")
+    }
+
     /// Creates a new Playground instance with initialized state.
     /// Returns an error if initialization fails at any step.
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        // create and configure sample player
+        println!("Creating audio player...");
+        let playing = false;
+        let mut player = Player::new(DefaultOutputDevice::open()?, None)?;
+        player.set_sample_root_note(Note::C4);
+        player.set_playback_preload_time(Self::PLAYBACK_PRELOAD_TIME);
+
+        let output_sample_rate = player.sample_rate();
+
         // load samples
         println!("Loading sample files...");
         let mut samples = Vec::new();
-        let sample_pool = Arc::new(SamplePool::new());
         for dir_entry in fs::read_dir(format!("{}/samples", Self::ASSETS_PATH))?.flatten() {
             let path = dir_entry.path();
             if let Some(extension) = path.extension().map(|e| e.to_string_lossy()) {
                 if matches!(extension.as_bytes(), b"mp3" | b"wav" | b"flac") {
-                    let id = usize::from(sample_pool.load_sample(&path)?);
+                    let id = samples.len();
                     let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                    println!("Added sample '{}' with id {}", name, id);
-                    samples.push(SampleEntry { id, name });
+                    println!("Loading sample '{}'...", name);
+                    let file_source = PreloadedFileSource::from_file(
+                        path,
+                        FilePlaybackOptions::default(),
+                        output_sample_rate,
+                    )
+                    .map_err(|err| err.to_string())?;
+                    samples.push(SampleEntry {
+                        id,
+                        name,
+                        file_source,
+                    });
                 }
             }
         }
-
-        // create and configure sample player
-        println!("Creating audio player...");
-        let playing = false;
-        let mut player = SamplePlayer::new(Arc::clone(&sample_pool), None)?;
-        player.set_sample_root_note(Note::C4);
-        player.set_new_note_action(NewNoteAction::Off(Some(Duration::from_millis(350))));
-        player.set_playback_preload_time(Duration::from_secs_f64(Self::PLAYBACK_PRELOAD_SECONDS));
 
         // sequence & pattern
         let sequence = None;
@@ -196,7 +230,24 @@ impl Playground {
         let playing_notes = Vec::new();
 
         // default instrument
-        let instrument_id = samples.first().map(|e| e.id);
+        let instrument_index = (!samples.is_empty()).then(|| samples.len() - 1);
+        if let Some(instrument_index) = instrument_index {
+            let sampler = Sampler::from_file_source(
+                samples[instrument_index]
+                    .file_source
+                    .clone(FilePlaybackOptions::default(), output_sample_rate)
+                    .map_err(|err| err.to_string())?,
+                GeneratorPlaybackOptions::default().voices(Self::SAMPLER_VOICE_COUNT),
+                player.channel_count(),
+                player.sample_rate(),
+            )
+            .and_then(|sampler| sampler.with_ahdsr(Self::default_ahdsr_parameters()))
+            .map_err(|err| err.to_string())?;
+
+            player
+                .set_generator(0, sampler.into_box(), None)
+                .map_err(|err| err.to_string())?;
+        }
 
         // playback time
         let output_start_sample_time = player.inner().output_sample_frame_position();
@@ -209,9 +260,8 @@ impl Playground {
         };
 
         Ok(Self {
-            player,
             playing,
-            sample_pool,
+            player,
             samples,
             sequence,
             pattern,
@@ -223,7 +273,7 @@ impl Playground {
             script_parameter_values,
             script_error,
             playing_notes,
-            instrument_id,
+            instrument_index,
             output_start_sample_time,
             emitted_sample_time,
         })
@@ -308,13 +358,13 @@ impl Playground {
 
     /// Stops all currently playing audio sources and resets the sequence.
     pub fn stop_playing(&mut self) {
-        let _ = self.player.stop_all_sources();
+        let _ = self.player.stop_all_notes();
         self.playing = false;
     }
 
     /// Stops all currently playing audio sources.
     pub fn stop_playing_notes(&mut self) {
-        let _ = self.player.stop_all_sources();
+        let _ = self.player.stop_all_notes();
     }
 
     /// Set global playback volume.
@@ -380,11 +430,11 @@ impl Playground {
             if let Some(pattern_slot) = self.pattern_slot(note as usize) {
                 *pattern_slot = PatternSlot::Stop;
                 // stop pending from the note
-                self.player.stop_sources_in_pattern_slot(note as usize);
+                self.player.stop_notes_in_pattern_slot(note as usize);
             }
             // restore default playback in `run` with the last note removed
             if self.playing_notes.is_empty() {
-                let _ = self.player.stop_all_sources();
+                let _ = self.player.stop_all_notes();
                 self.script_changed = true;
             }
         }
@@ -397,9 +447,35 @@ impl Playground {
     }
 
     /// Sets the default instrument ID for playback.
-    pub fn set_instrument(&mut self, id: i32) {
-        self.instrument_id = if id < 0 { None } else { Some(id as usize) };
-        self.script_changed = true;
+    pub fn set_instrument(&mut self, index: i32) -> Result<(), String> {
+        self.instrument_index = if index < 0 {
+            None
+        } else {
+            Some(index as usize)
+        };
+        if let Some(index) = self.instrument_index {
+            let sample = &self.samples[index as usize];
+            println!("Loading sample file '{}'...", sample.name);
+            // create generator
+            let sampler = Sampler::from_file_source(
+                sample
+                    .file_source
+                    .clone(FilePlaybackOptions::default(), self.player.sample_rate())
+                    .map_err(|err| err.to_string())?,
+                GeneratorPlaybackOptions::default().voices(Self::SAMPLER_VOICE_COUNT),
+                self.player.channel_count(),
+                self.player.sample_rate(),
+            )
+            .and_then(|sampler| sampler.with_ahdsr(Self::default_ahdsr_parameters()))
+            .map_err(|err| err.to_string())?;
+            self.player
+                .set_generator(0, sampler.into_box(), None)
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        } else {
+            self.player.clear_generator(0);
+            Ok(())
+        }
     }
 
     /// Sets a script parameter value.
@@ -425,30 +501,53 @@ impl Playground {
         }
     }
 
-    /// Load a sample from a raw file buffer and add it to the pool
+    /// Load a sample from a raw file buffer and add it to player.
+    /// Returns the sample index it was loaded into or an error.
     pub fn load_sample(&mut self, file_buffer: Vec<u8>, file_name: &str) -> Result<usize, String> {
-        match self.sample_pool.load_sample_buffer(file_buffer, file_name) {
-            Ok(instrument_id) => {
-                let id = usize::from(instrument_id);
-                let name = Path::new(&file_name)
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                self.samples.push(SampleEntry { name, id });
-                Ok(id)
-            }
-            Err(err) => Err(err.to_string()),
-        }
+        // create file source
+        let file_source = PreloadedFileSource::from_file_buffer(
+            file_buffer,
+            file_name,
+            FilePlaybackOptions::default(),
+            self.player.sample_rate(),
+        )
+        .map_err(|err| err.to_string())?;
+        // create generator
+        let sampler = Sampler::from_file_source(
+            file_source
+                .clone(FilePlaybackOptions::default(), self.player.sample_rate())
+                .map_err(|err| err.to_string())?,
+            GeneratorPlaybackOptions::default().voices(Self::SAMPLER_VOICE_COUNT),
+            self.player.channel_count(),
+            self.player.sample_rate(),
+        )
+        .and_then(|sampler| sampler.with_ahdsr(Self::default_ahdsr_parameters()))
+        .map_err(|err| err.to_string())?;
+        self.player
+            .set_generator(0, sampler.into_box(), None)
+            .map_err(|err| err.to_string())?;
+        // add to sample list
+        let name = Path::new(&file_name)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let id = self.samples.len();
+        self.samples.push(SampleEntry {
+            id,
+            name,
+            file_source,
+        });
+        Ok(self.samples.len() - 1)
     }
 
     /// Reset sample pool, removing all samples
     pub fn clear_samples(&mut self) {
         // Clear the sample pool
-        self.sample_pool.clear();
         self.samples.clear();
         // Reset the current instrument
-        self.instrument_id = None;
+        self.instrument_index = None;
+        self.player.clear_generator(0);
         self.script_changed = true;
     }
 
@@ -642,12 +741,7 @@ impl Playground {
     /// Create a new pattern from the currently set script content.
     fn new_pattern(&self) -> (Rc<RefCell<dyn Pattern>>, String) {
         // create a new pattern from our script
-        match new_pattern_from_string(
-            self.time_base,
-            self.instrument_id.map(InstrumentId::from),
-            &self.script_content,
-            "[script]",
-        ) {
+        match new_pattern_from_string(self.time_base, None, &self.script_content, "[script]") {
             Ok(pattern) => {
                 // return pattern as it is
                 (pattern, String::new())
@@ -691,14 +785,6 @@ impl Playground {
         midi_note: Option<PlayingNote>,
     ) -> Option<EventTransform> {
         let transforms: Vec<_> = [
-            // Instrument transform
-            self.instrument_id.map(InstrumentId::from).map(|id| {
-                Box::new(move |note: &mut NoteEvent| {
-                    if note.instrument.is_none() {
-                        note.instrument = Some(id)
-                    }
-                }) as Box<dyn Fn(&mut NoteEvent)>
-            }),
             // Note transform
             midi_note.map(|note| {
                 let offset = note.note as i32 - 48;
@@ -831,8 +917,12 @@ pub extern "C" fn set_bpm(bpm: ffi::c_int) {
 
 /// Update player's default instrument id.
 #[no_mangle]
-pub extern "C" fn set_instrument(id: ffi::c_int) {
-    with_playground_mut(|playground| playground.set_instrument(id));
+pub extern "C" fn set_instrument(index: ffi::c_int) {
+    with_playground_mut(|playground| {
+        if let Err(err) = playground.set_instrument(index) {
+            eprintln!("Failed to select new sample: {err}");
+        }
+    });
 }
 
 /// Set a script parameter value.
@@ -865,13 +955,10 @@ pub unsafe extern "C" fn load_sample(
         .into_owned();
     with_playground_mut(
         |playground| match playground.load_sample(file_buffer, &file_name) {
-            Ok(id) => {
-                println!("Loaded sample '{}' with id {}", file_name, id);
-                id as ffi::c_int
-            }
+            Ok(index) => index as ffi::c_int,
             Err(err) => {
                 eprintln!("Failed to load sample '{}': {}", file_name, err);
-                -1
+                -1 as ffi::c_int
             }
         },
     )
