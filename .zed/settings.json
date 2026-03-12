@@ -8,7 +8,7 @@
 			"initialization_options": {
 				"cargo": {
 					"autoreload": true,
-					"features": ["scripting", "player", "cpal-output"]
+					"features": ["scripting", "lua-jit", "player", "fundsp", "cpal-output"]
 				},
 				"check": {
 					"command": "clippy"

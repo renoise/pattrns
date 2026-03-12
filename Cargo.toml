@@ -37,7 +37,7 @@ mlua = { version = "^0.11", features = [
 
 # optional -> player
 dashmap = { version = "^6.1", optional = true }
-phonic = { version = "^0.12", default-features = false, optional = true }
+phonic = { version = "^0.16", default-features = false, optional = true }
 
 # dev dependencies
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
@@ -59,16 +59,18 @@ debug = "full"
 
 [features]
 # enables profiling in examples
-dhat-profiler = ["dhat"]
+dhat-profiler = ["dep:dhat"]
 
-# example player implementation
-player = ["dashmap", "phonic"]
-# example player's audio output driver
+# enable example player implementation
+player = ["dep:dashmap", "dep:phonic"]
+# enable example player's fundsp synth support
+fundsp = ["phonic/fundsp"]
+# select example player's audio output driver
 web-output = ["phonic/web-output"]
 cpal-output = ["phonic/cpal-output"]
 
 # lua scripting
-scripting = ["mlua"]
+scripting = ["dep:mlua"]
 
 # lua scripting interpreter backends (mutually exclusive)
 # all featured interpreters should be compatible with lua51
@@ -82,7 +84,7 @@ default = ["scripting", "lua-jit"]
 
 [package.metadata.docs.rs]
 no-default-features = true
-features = ["scripting", "lua-jit", "player", "cpal-output"]
+features = ["scripting", "lua-jit", "player", "fundsp", "cpal-output"]
 
 [lib]
 bench = false
@@ -93,7 +95,7 @@ harness = false
 
 [[example]]
 name = "play"
-required-features = ["player", "cpal-output"]
+required-features = ["player", "fundsp", "cpal-output"]
 
 [[example]]
 name = "play-script"

@@ -1,21 +1,21 @@
 [
 	{
 		"label": "cargo build",
-		"command": "cargo build --features=scripting,player,cpal-output --example=*",
+		"command": "cargo build --features=scripting,player,fundsp,cpal-output --example=*",
 		"show_command": true,
 		"reveal": "never",
 		"tags": ["build"]
 	},
 	{
 		"label": "cargo test",
-		"command": "cargo test --features=scripting,player,cpal-output",
+		"command": "cargo test --features=scripting,player,fundsp.cpal-output --example=*",
 		"show_command": true,
 		"reveal": "never",
 		"tags": ["test"]
 	},
 	{
 		"label": "cargo clippy",
-		"command": "cargo clippy --features=scripting,player,cpal-output --example=*",
+		"command": "cargo clippy --features=scripting,player,fundsp,cpal-output --example=*",
 		"show_command": true,
 		"reveal": "never",
 		"tags": ["check"]

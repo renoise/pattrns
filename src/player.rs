@@ -3,186 +3,57 @@
 
 use std::{
     collections::HashMap,
-    path::Path,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        mpsc::SyncSender,
-        Arc,
-    },
+    sync::{mpsc::SyncSender, Arc},
     time::Duration,
-};
-
-use dashmap::DashMap;
-
-use phonic::{
-    sources::PreloadedFileSource, utils::speed_from_note, DefaultOutputDevice, Error,
-    FilePlaybackOptions, PlaybackId, PlaybackStatusContext, PlaybackStatusEvent,
-    Player as PhonicPlayer,
 };
 
 use crate::{
     time::{SampleTimeBase, SampleTimeDisplay},
-    BeatTimeBase, Event, ExactSampleTime, InstrumentId, Note, NoteEvent, PatternEvent, PatternSlot,
-    SampleTime, Sequence,
+    BeatTimeBase, Event, ExactSampleTime, Note, NoteEvent, PatternEvent, PatternSlot, SampleTime,
+    Sequence,
 };
 
 // -------------------------------------------------------------------------------------------------
 
-/// [`phonic`](https://crates.io/crates/phonic) effects.
-pub use phonic::{
-    effects, Effect, EffectId, EffectMessage, EffectMessagePayload, EffectTime, MixerId,
-};
-
-// -------------------------------------------------------------------------------------------------
-
-/// Preloads a set of sample files and stores them in a DashMap as [`PreloadedFileSource`]
-/// for later use.
-///
-/// Pool usually will be held in an Arc, so it can be read from the sequencer thread, while it
-/// also can be updated from some other thread such as the main thread.
-///
-/// When files are accessed, the already cached file sources are cloned, which avoids loading
-/// and decoding the files again while playback. Cloned [`PreloadedFileSource`] are using a
-/// shared buffer, so cloning is very cheap.
-///
-/// The pool also memorizes default mixer_ids for [`SamplePlayer`] so samples in the pool can
-/// be assigned to different mixers (DSP effect chains) as well.
-
-#[derive(Default)]
-pub struct SamplePool {
-    pool: DashMap<InstrumentId, PreloadedFileSource>,
-    routing: DashMap<InstrumentId, MixerId>,
-}
-
-impl SamplePool {
-    /// Create a new empty sample pool.
-    pub fn new() -> Self {
-        Self {
-            pool: DashMap::new(),
-            routing: DashMap::new(),
-        }
-    }
-
-    /// Fetch a clone of a preloaded sample with the given playback options.
-    ///
-    /// ### Errors
-    /// Returns an error if the instrument id is unknown.
-    pub fn sample(
-        &self,
-        id: InstrumentId,
-        playback_options: FilePlaybackOptions,
-        playback_sample_rate: u32,
-    ) -> Result<PreloadedFileSource, Error> {
-        if let Some(sample) = self.pool.get(&id) {
-            sample.clone(playback_options, playback_sample_rate)
-        } else {
-            Err(Error::MediaFileNotFound)
-        }
-    }
-
-    /// Loads a sample file as [`PreloadedFileSource`] and return its unique id.
-    /// A copy of this sample can then later on be fetched with `get_sample` with the returned id.
-    ///
-    /// ### Errors
-    /// Returns an error if the sample file could not be loaded.
-    pub fn load_sample<P: AsRef<Path>>(&self, path: P) -> Result<InstrumentId, Error> {
-        let options = FilePlaybackOptions::default();
-        let sample = PreloadedFileSource::from_file(path, None, options, 44100)?;
-        let id = Self::unique_id();
-        self.pool.insert(id, sample);
-        Ok(id)
-    }
-
-    /// Loads a sample file from a raw encoded file buffer as [`PreloadedFileSource`] and return
-    /// its unique id. Given path is used to identify the file in status messages only.
-    ///
-    /// ### Errors
-    /// Returns an error if the sample file could not be loaded.
-    pub fn load_sample_buffer(&self, buffer: Vec<u8>, path: &str) -> Result<InstrumentId, Error> {
-        let options = FilePlaybackOptions::default();
-        let sample = PreloadedFileSource::from_file_buffer(buffer, path, None, options, 44100)?;
-        let id = Self::unique_id();
-        self.pool.insert(id, sample);
-        Ok(id)
-    }
-
-    /// Removes the sample with the given id from the pool.
-    /// Returns the removed sample, or None when it was not found.
-    pub fn remove_sample(&self, id: InstrumentId) -> Option<PreloadedFileSource> {
-        self.pool.remove(&id).map(|(_, v)| v)
-    }
-
-    /// Retains samples where the given predicate returns true and discards all others.
-    pub fn retain_samples(&self, mut func: impl FnMut(InstrumentId) -> bool) {
-        self.pool.retain(move |k, _| func(*k))
-    }
-
-    /// Get a single default instrument routing or None when there was none set.
-    pub fn target_mixer(&self, instrument: InstrumentId) -> Option<MixerId> {
-        self.routing.get(&instrument).map(|m| *m)
-    }
-
-    /// Set or unset a single new default instrument routing.
-    pub fn set_target_mixer(&self, instrument: InstrumentId, mixer_id: Option<MixerId>) {
-        if let Some(mixer_id) = mixer_id {
-            self.routing.insert(instrument, mixer_id);
-        } else {
-            self.routing.remove(&instrument);
-        }
-    }
-
-    /// Clears all preloaded samples and routings from the pool.
-    ///
-    /// ### Panics
-    /// Panics if the sample pool can not be accessed
-    pub fn clear(&self) {
-        self.pool.clear();
-        self.routing.clear();
-    }
-
-    // Generate a new unique instrument id.
-    fn unique_id() -> InstrumentId {
-        static ID: AtomicUsize = AtomicUsize::new(0);
-        InstrumentId::from(ID.fetch_add(1, Ordering::Relaxed))
-    }
+/// [`phonic`](https://crates.io/crates/phonic) mixer, generators and effects.
+pub mod phonic {
+    pub use phonic::*;
 }
 
 // -------------------------------------------------------------------------------------------------
 
-/// Sample player's behavior when playing a new note on the same voice channel.
-#[derive(Copy, Clone, Debug, PartialEq)]
+/// Player's behavior when playing a new note on the same voice channel.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum NewNoteAction {
     /// Continue playing the old note and start a new one.
     Continue,
     /// Stop the playing note before starting a new one.
+    #[default]
     Stop,
-    /// Stop the playing note before with the given fade-out duration
-    Off(Option<Duration>),
-}
-
-impl Default for NewNoteAction {
-    fn default() -> Self {
-        Self::Off(Some(Duration::from_millis(100)))
-    }
 }
 
 // -------------------------------------------------------------------------------------------------
 
-/// Context, passed along serialized when triggering new notes from the sample player.   
+/// Context, passed along to phonic playback event channels when triggering new notes from the player.
 #[derive(Clone)]
-pub struct SamplePlaybackContext {
+pub struct PlaybackContext {
+    /// The triggered note.
+    pub note: Note,
+    /// Pattern index in [`PhraseEvent`].
     pub pattern_index: Option<usize>,
+    /// Voice index of note arrays in [`PatternEvent`].
     pub voice_index: Option<usize>,
 }
 
-impl SamplePlaybackContext {
-    pub fn from_event(context: Option<PlaybackStatusContext>) -> Self {
+impl PlaybackContext {
+    pub fn from_event(context: Option<phonic::PlaybackStatusContext>) -> Self {
         if let Some(context) = context {
-            if let Some(context) = context.downcast_ref::<SamplePlaybackContext>() {
+            if let Some(context) = context.downcast_ref::<PlaybackContext>() {
                 return context.clone();
             }
         }
-        SamplePlaybackContext {
+        PlaybackContext {
+            note: Note::EMPTY,
             pattern_index: None,
             voice_index: None,
         }
@@ -191,18 +62,14 @@ impl SamplePlaybackContext {
 
 // -------------------------------------------------------------------------------------------------
 
-/// A simple example player implementation as wrapper around [`phonic`](https://crates.io/crates/phonic),
-/// which plays back a [`Sequence`] using the default audio output device, using plain samples loaded
-/// from a file as instruments.
+/// A simple example player implementation using [`phonic`](https://crates.io/crates/phonic),
+/// which plays back a [`Sequence`] using the default audio output device.
 ///
-/// Uses an existing, shared sample pool, so the pool can also be maintained outside of the player.
-/// To add/remove samples, see [`SamplePool`].
-///
-/// To use DSP effects, use the [`Self::inner_mut`] function to access the underlying phonic player
-/// and use the [`SamplePool::set_target_mixer`] to route specific samples though specific mixers.  
-pub struct SamplePlayer {
-    inner: PhonicPlayer,
-    sample_pool: Arc<SamplePool>,
+/// To create and use mixers and DSP effects, use the [`Self::inner_mut`] function to access the
+/// underlying phonic player.
+pub struct Player {
+    inner: phonic::Player,
+    generators: Vec<Option<phonic::GeneratorPlaybackHandle>>,
     playing_notes: Vec<HashMap<usize, PlayingNote>>,
     new_note_action: NewNoteAction,
     sample_root_note: Note,
@@ -213,23 +80,36 @@ pub struct SamplePlayer {
     emitted_sample_time: SampleTime,
 }
 
-impl SamplePlayer {
+impl Player {
     /// Default preload time of the player's `run_until` function.
     /// Quite high by default and bigger in slower debug builds.
     const DEFAULT_PLAYBACK_PRELOAD_MS: u64 = if cfg!(debug_assertions) { 500 } else { 250 };
 
-    /// Create a new sample player from the given shared SamplePool.
+    /// Create a new sample player.
     ///
     /// # Errors
     /// returns an error if the player could not be created.
-    pub fn new<S: Into<Option<SyncSender<PlaybackStatusEvent>>>>(
-        sample_pool: Arc<SamplePool>,
+    pub fn new<S: Into<Option<SyncSender<phonic::PlaybackStatusEvent>>>>(
+        output_device: phonic::DefaultOutputDevice,
         playback_status_sender: S,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        // create player
-        let audio_output = DefaultOutputDevice::open()?;
-        let inner = PhonicPlayer::new(audio_output, playback_status_sender);
+        let config = phonic::PlayerConfig::default();
+        Self::new_with_config(output_device, playback_status_sender, config)
+    }
 
+    /// Create a new sample player with the given phonic player configuration.
+    ///
+    /// # Errors
+    /// returns an error if the player could not be created.
+    pub fn new_with_config<S: Into<Option<SyncSender<phonic::PlaybackStatusEvent>>>>(
+        output_device: phonic::DefaultOutputDevice,
+        playback_status_sender: S,
+        config: phonic::PlayerConfig,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        // create player
+        let inner = phonic::Player::new_with_config(output_device, playback_status_sender, config);
+
+        let generators = Vec::new();
         let playing_notes = Vec::new();
 
         let new_note_action = NewNoteAction::default();
@@ -243,7 +123,7 @@ impl SamplePlayer {
 
         Ok(Self {
             inner,
-            sample_pool,
+            generators,
             playing_notes,
             new_note_action,
             sample_root_note,
@@ -256,17 +136,22 @@ impl SamplePlayer {
     }
 
     /// Access to the player's inner phonic instance.
-    pub fn inner(&self) -> &PhonicPlayer {
+    pub fn inner(&self) -> &phonic::Player {
         &self.inner
     }
     /// Mutable access to the player's inner phonic instance.
-    pub fn inner_mut(&mut self) -> &mut PhonicPlayer {
+    pub fn inner_mut(&mut self) -> &mut phonic::Player {
         &mut self.inner
     }
 
     /// Return the output backend's sample rate. All sources will be played back at this rate.
     pub fn sample_rate(&self) -> u32 {
         self.inner.output_sample_rate()
+    }
+
+    /// Return the output backend's channel count.
+    pub fn channel_count(&self) -> usize {
+        self.inner.output_channel_count()
     }
 
     /// true when events are dumped to stdout while playing them.
@@ -317,23 +202,124 @@ impl SamplePlayer {
         self.sample_root_note = root_note;
     }
 
-    /// Stop all currently playing sources.
-    pub fn stop_all_sources(&mut self) {
-        self.inner
-            .stop_all_sources()
-            .expect("Failed to stop all sources");
+    /// Get the generator playback handle for the given pattern index, if it exists.
+    ///
+    /// This allows controlling the generator (e.g. changing volume, panning, or parameters)
+    /// directly while the player is running.
+    pub fn generator_handle(
+        &self,
+        pattern_index: usize,
+    ) -> Option<phonic::GeneratorPlaybackHandle> {
+        self.generators.get(pattern_index).and_then(Clone::clone)
+    }
+
+    /// Sets a generator for the given pattern index.
+    ///
+    /// If a generator already exists at this index, it gets replaced with the new one.
+    pub fn set_generator(
+        &mut self,
+        pattern_index: usize,
+        generator: Box<dyn phonic::Generator>,
+        mixer_id: Option<phonic::MixerId>,
+    ) -> Result<phonic::GeneratorPlaybackHandle, phonic::Error> {
+        // Remove existing generator, if any
+        self.clear_generator(pattern_index);
+        // Add and memorize the new generator
+        let handle = self.inner.add_generator(generator, mixer_id)?;
+        if pattern_index >= self.generators.len() {
+            self.generators.resize(pattern_index + 1, None);
+        }
+        self.generators[pattern_index] = Some(handle.clone());
+        Ok(handle)
+    }
+
+    /// Clears the generator at the given index.
+    pub fn clear_generator(&mut self, pattern_index: usize) {
+        if let Some(generator_slot) = self.generators.get_mut(pattern_index) {
+            if let Some(generator) = generator_slot.take() {
+                if let Err(err) = self.inner.remove_generator(generator.id()) {
+                    log::warn!("Failed to remove generator: '{err}'");
+                }
+            }
+        }
+    }
+
+    /// Inserts a new generator slot at the given pattern index - shifting all generators after it to the right.
+    /// Use this when inserting patterns in the sequence, else use [Self::set_generator] instead.
+    pub fn insert_generator(
+        &mut self,
+        pattern_index: usize,
+        generator: Box<dyn phonic::Generator>,
+        mixer_id: Option<phonic::MixerId>,
+    ) -> Result<phonic::GeneratorPlaybackHandle, phonic::Error> {
+        self.generators.insert(pattern_index, None);
+        self.set_generator(pattern_index, generator, mixer_id)
+    }
+
+    /// Removes the generator at the given index - shifting all generators after it to the left.
+    /// Use this when removing patterns in the sequence, else use [Self::clear_generator] instead.
+    pub fn remove_generator(&mut self, pattern_index: usize) {
+        assert!(
+            self.generators.get(pattern_index).is_some(),
+            "Invalid generator index"
+        );
+        if let Some(generator) = self.generators.remove(pattern_index) {
+            if let Err(err) = self.inner.remove_generator(generator.id()) {
+                log::warn!("Failed to remove generator: '{err}'");
+            }
+        }
+    }
+
+    /// Move an existing generator slot to a new index. Use this when moving patterns in the sequence.
+    pub fn move_generator(&mut self, from_pattern_index: usize, to_pattern_index: usize) {
+        assert!(
+            self.generators.get(from_pattern_index).is_none()
+                || (self.generators.get(from_pattern_index).is_some()
+                    && self.generators.get(to_pattern_index).is_some()),
+            "Invalid generator indices"
+        );
+
+        if self.generators.get(from_pattern_index).is_some()
+            && self.generators.get(to_pattern_index).is_some()
+        {
+            let item = self.generators.remove(from_pattern_index);
+            if to_pattern_index >= self.generators.len() {
+                self.generators.resize_with(to_pattern_index + 1, || None);
+            }
+            self.generators.insert(to_pattern_index, item);
+        }
+    }
+
+    /// Stop all currently playing notes.
+    pub fn stop_all_notes(&mut self) {
+        // Stop all notes in all generators
+        for generator in self.generators.iter().flatten() {
+            if let Err(err) = generator.all_notes_off(None) {
+                log::warn!("Failed to trigger all notes off: {err}");
+            }
+        }
+        // Clear playing notes
         for notes in &mut self.playing_notes {
             notes.clear();
+        }
+        // Remove already scheduled events in all mixers too
+        if let Err(err) = self.inner.stop_all_sources() {
+            log::warn!("Failed to trigger stop all sources event: {err}");
         }
     }
 
     /// Stop all currently playing sources in the given pattern slot index.
-    pub fn stop_sources_in_pattern_slot(&mut self, pattern_index: usize) {
-        for playing_note in self.playing_notes[pattern_index].values() {
-            // ignore result: source maybe already is stopped
-            let _ = self.inner.stop_source(playing_note.playback_id, None);
+    pub fn stop_notes_in_pattern_slot(&mut self, pattern_index: usize) {
+        if let Some(notes) = self.playing_notes.get_mut(pattern_index) {
+            for playing_note in notes.values() {
+                if let Some(Some(generator)) = self.generators.get(pattern_index) {
+                    if let Err(err) = generator.note_off(playing_note.note_id, None) {
+                        log::warn!("Failed to trigger note off: {err}");
+                    }
+                }
+            }
+            notes.clear();
         }
-        self.playing_notes[pattern_index].clear();
     }
 
     /// Run/play the given sequence until it stops.
@@ -469,11 +455,14 @@ impl SamplePlayer {
                 time_offset + time
             };
             // stop remaining playing notes at the lookup time or time we're applying the new sequence
-            for playing_notes in &mut self.playing_notes {
+            for (pattern_index, playing_notes) in self.playing_notes.iter_mut().enumerate() {
                 for playing_note in playing_notes.values_mut() {
                     if playing_note.stop_time.is_none() {
-                        // ignore stop result: source maybe already is stopped
-                        let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                        if let Some(Some(generator)) = self.generators.get(pattern_index) {
+                            if let Err(err) = generator.note_off(playing_note.note_id, stop_time) {
+                                log::warn!("Failed to trigger note off: {err}");
+                            }
+                        }
                         playing_note.stop_time = Some(stop_time);
                     }
                 }
@@ -482,7 +471,7 @@ impl SamplePlayer {
         // update playing notes state to fit the new sequence
         self.playing_notes
             .resize_with(sequence.phrase_pattern_slot_count(), HashMap::new);
-        // and finally prepare the new sequence by advancing it to the target time
+        // and finally, prepare the new sequence by advancing it to the target time
         sequence.advance_until_time(time);
     }
 
@@ -509,11 +498,11 @@ impl SamplePlayer {
 
     /// Manually seek the given sequence to the given time offset and actual position.
     pub fn advance_until_time(&mut self, sequence: &mut Sequence, time: SampleTime) {
-        self.stop_all_sources();
+        self.stop_all_notes();
         sequence.advance_until_time(time);
     }
 
-    /// Manually run the given sequence with the given time offset and actual position.
+    /// Manually run the given sequence with the given time offset to the given time.
     /// When exchanging the sequence, call `prepare_run_until_time` before calling `run_until_time`.
     pub fn run_until_time(
         &mut self,
@@ -521,6 +510,7 @@ impl SamplePlayer {
         time_offset: SampleTime,
         time: SampleTime,
     ) {
+        // run sequence to the given time
         let time_base = *sequence.time_base();
         sequence.consume_events_until_time(time, &mut |pattern_index, pattern_event| {
             self.handle_pattern_event(pattern_index, pattern_event, time_base, time_offset);
@@ -552,8 +542,13 @@ impl SamplePlayer {
                         self.playing_notes[pattern_index].get_mut(&voice_index)
                     {
                         if playing_note.stop_time.is_none_or(|time| time > stop_time) {
-                            // ignore stop result: source maybe already is stopped
-                            let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                            if let Some(Some(generator)) = self.generators.get(pattern_index) {
+                                if let Err(err) =
+                                    generator.note_off(playing_note.note_id, Some(stop_time))
+                                {
+                                    log::warn!("Failed to trigger note off: {err}");
+                                }
+                            }
                             playing_note.stop_time = Some(stop_time)
                         }
                     }
@@ -609,34 +604,30 @@ impl SamplePlayer {
                         self.playing_notes[pattern_index].get_mut(&voice_index)
                     {
                         if playing_note.stop_time.is_none_or(|time| time > stop_time) {
-                            // ignore stop result: source maybe already is stopped
-                            let _ = self.inner.stop_source(playing_note.playback_id, stop_time);
+                            if let Some(Some(generator)) = self.generators.get(pattern_index) {
+                                if let Err(err) =
+                                    generator.note_off(playing_note.note_id, Some(stop_time))
+                                {
+                                    log::warn!("Failed to trigger note off: {err}");
+                                }
+                            }
                             playing_note.stop_time = Some(stop_time);
                         }
                     }
                 }
                 // Play new note
                 if note_event.note.is_note_on() {
-                    if let Some(instrument) = note_event.instrument {
-                        let start_time =
-                            self.note_event_time(&pattern_event, note_event, time_offset);
-                        if note_event.glide.is_none()
-                            || !self.play_glided_note(
-                                pattern_index,
-                                voice_index,
-                                &pattern_event,
-                                note_event,
-                                start_time,
-                            )
-                        {
-                            self.play_new_note(
-                                pattern_index,
-                                voice_index,
-                                note_event,
-                                instrument,
-                                start_time,
-                            );
-                        }
+                    let start_time = self.note_event_time(&pattern_event, note_event, time_offset);
+                    if note_event.glide.is_none()
+                        || !self.play_glided_note(
+                            pattern_index,
+                            voice_index,
+                            &pattern_event,
+                            note_event,
+                            start_time,
+                        )
+                    {
+                        self.play_new_note(pattern_index, voice_index, note_event, start_time);
                     }
                 }
             }
@@ -683,7 +674,7 @@ impl SamplePlayer {
             if playing_note.stop_time.is_none_or(|t| t > start_time) {
                 let midi_note = (note_event.note as i32 + 60 - self.sample_root_note as i32)
                     .clamp(0, 127) as u8;
-                let speed = speed_from_note(midi_note);
+                let speed = phonic::utils::speed_from_note(midi_note);
                 let volume = note_event.volume.max(0.0);
                 let panning = note_event.panning.clamp(-1.0, 1.0);
                 let glide = note_event.glide.unwrap_or(0.0).max(0.0);
@@ -694,26 +685,14 @@ impl SamplePlayer {
                     self.inner.output_sample_rate(),
                     pattern_event.duration,
                 );
-                let playback_id = playing_note.playback_id;
-                return self
-                    .inner
-                    .set_source_speed(
-                        playback_id,
-                        speed,
-                        Some(semitones_per_sec_glide),
-                        start_time,
-                    )
-                    .and(self.inner.set_source_volume(
-                        playback_id,
-                        volume,
-                        start_time, //
-                    ))
-                    .and(self.inner.set_source_panning(
-                        playback_id,
-                        panning,
-                        start_time, //
-                    ))
-                    .is_ok();
+                if let Some(Some(generator)) = self.generators.get(pattern_index) {
+                    let note_id = playing_note.note_id;
+                    return generator
+                        .set_note_speed(note_id, speed, Some(semitones_per_sec_glide), start_time)
+                        .and(generator.set_note_volume(note_id, volume, start_time))
+                        .and(generator.set_note_panning(note_id, panning, start_time))
+                        .is_ok();
+                }
             }
         }
         // no note playing which can be glided
@@ -724,8 +703,7 @@ impl SamplePlayer {
         &mut self,
         pattern_index: usize,
         voice_index: usize,
-        note_event: &crate::NoteEvent,
-        instrument: InstrumentId,
+        note_event: &NoteEvent,
         start_time: SampleTime,
     ) {
         let midi_note =
@@ -733,47 +711,40 @@ impl SamplePlayer {
         let volume = note_event.volume.max(0.0);
         let panning = note_event.panning.clamp(-1.0, 1.0);
 
-        let mut playback_options = FilePlaybackOptions::default()
-            .speed(speed_from_note(midi_note))
-            .volume(volume)
-            .panning(panning)
-            .playback_pos_emit_rate(self.playback_pos_emit_rate);
-        playback_options.fade_out_duration = match self.new_note_action {
-            NewNoteAction::Continue | NewNoteAction::Stop => Some(Duration::from_millis(100)),
-            NewNoteAction::Off(duration) => duration,
-        };
-
-        let playback_sample_rate = self.inner.output_sample_rate();
-        if let Ok(sample) =
-            self.sample_pool
-                .sample(instrument, playback_options, playback_sample_rate)
-        {
-            let context: Option<PlaybackStatusContext> = Some(Arc::new(SamplePlaybackContext {
+        if let Some(Some(generator)) = self.generators.get(pattern_index) {
+            // Trigger note on
+            let context: Option<phonic::PlaybackStatusContext> = Some(Arc::new(PlaybackContext {
+                note: Note::from(midi_note),
                 pattern_index: Some(pattern_index),
                 voice_index: Some(voice_index),
             }));
-
-            let playback_id = self
-                .inner
-                .play_file_source_with_context(sample, Some(start_time), context)
-                .expect("Failed to play file source");
-
-            self.playing_notes[pattern_index].insert(
-                voice_index,
-                PlayingNote {
-                    playback_id,
-                    note: note_event.note,
-                    stop_time: None,
-                },
-            );
-        } else {
-            log::error!(target: "Player", "Failed to get sample with id {}", instrument);
+            match generator.note_on_with_context(
+                midi_note,
+                Some(volume),
+                Some(panning),
+                context,
+                start_time,
+            ) {
+                Ok(note_id) => {
+                    self.playing_notes[pattern_index].insert(
+                        voice_index,
+                        PlayingNote {
+                            note_id,
+                            note: note_event.note,
+                            stop_time: None,
+                        },
+                    );
+                }
+                Err(err) => {
+                    log::warn!("Failed to trigger note on: {err}");
+                }
+            }
         }
     }
 
     fn reset_playback_position(&mut self, sequence: &Sequence) {
         // stop whatever is playing in case we're restarting
-        self.stop_all_sources();
+        self.stop_all_notes();
         // rebuild playing notes vec
         self.playing_notes
             .resize_with(sequence.phrase_pattern_slot_count(), HashMap::new);
@@ -785,11 +756,11 @@ impl SamplePlayer {
 
 // -------------------------------------------------------------------------------------------------
 
-/// Single playing note in a player pattern's channel.
-#[derive(Debug, Clone, Copy)]
+/// Single playing note in a player pattern.
+#[derive(Clone)]
 struct PlayingNote {
-    /// The playback ID of the playing note.
-    playback_id: PlaybackId,
+    /// The note playback ID of the playing note.
+    note_id: phonic::NotePlaybackId,
     /// The MIDI note value of the playing note.
     note: Note,
     /// Some, when a stop note is scheduled for the note.
