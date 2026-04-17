@@ -125,8 +125,31 @@
 >     return note(cmin:chord(tonumber(value)))
 >   end
 > end)
-> ```  
+> ```
 
+### var([*self*](../API/builtins/self.md), vars : [`CycleVarFunction`](#CycleVarFunction) | {  })<a name="var"></a>
+`->`[`Cycle`](../API/cycle.md#Cycle)  
+
+> Assign variables to be used inside the cycle (with `$` prefix).
+> 
+> By default the parameters you set on the pattern will get assigned as variables by their name,
+> but you can also define static variables by supplying a table to `var` or create the same via a callback.
+> 
+> #### examples:
+> ```lua
+> --Using a static table for variables
+> cycle("bd $r $r $r"):var({
+>   r = "[a b c]",
+> })
+> ```
+> ```lua
+> --Using a callback to generate variables
+> cycle("c $r"):var(function(context)
+>    return {
+>      r = context.iteration == 1 and "a*4" or "[a b c]"
+>    }
+> end)
+> ```
 
 
 ---  
@@ -158,9 +181,6 @@
 >     | "running"
 > ```  
   
-
-
-
 # CycleMapContext<a name="CycleMapContext"></a>  
 > Context passed to 'cycle:map` functions.  
 
@@ -215,5 +235,20 @@
 > ```  
   
 
+---
+### CycleVarFunction<a name="CycleVarFunction"></a>
+(context : [`CycleVarContext`](../API/cycle.md#CycleVarContext)) `->` { }
 
 
+# CycleVarContext<a name="CycleVarContext"></a>  
+> Context passed to 'cycle:var` functions.  
+
+---  
+## Properties
+### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
+> Current parameter values: parameter ids are keys, parameter values are values.
+> To access a parameter with id `enabled` use: `context.parameter.enabled`
+
+### iteration : [`integer`](../API/builtins/integer.md)<a name="iteration"></a>
+> Iteration counter for the cycle that increases once per the whole cycle's output
+> Starts from 1 when the cycle starts running or after it got reset.

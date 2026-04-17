@@ -239,6 +239,19 @@ return pattern {
 }
 ```
 
+You can also assign variables dynamically by supplying a callback to [`var`](../API/cycle.md#var), the callback will be called at every iteration of the cycle, you can access the index of the iteration on the `context` argument. Note, parameters you define will be assigned to variables as above, but you can override these with your callback.
+
+```lua
+return pattern {
+  parameter = {
+    parameter.integer("mult", 1, { 1, 8 })
+  },
+  event = cycle("a b*$mult"):var(function(context)
+    return { mult = context.parameter.mult * context.iteration }
+  end)
+}
+```
+
 TODO add function example
 
 
