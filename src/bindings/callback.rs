@@ -355,8 +355,8 @@ impl LuaCallback {
         Ok(())
     }
 
-    /// Sets the cycle context for the callback.
-    pub fn set_cycle_context(
+    /// Sets the cycle context for the mapping callback.
+    pub fn set_cycle_map_context(
         &mut self,
         playback_state: ContextPlaybackState,
         time_base: &BeatTimeBase,
@@ -367,6 +367,18 @@ impl LuaCallback {
         self.set_context_playback_state(playback_state)?;
         self.set_context_time_base(time_base)?;
         self.set_context_cycle_step(channel, step, step_length)?;
+        Ok(())
+    }
+
+    /// Sets the cycle context for the variables callback.
+    pub fn set_cycle_var_context(
+        &mut self,
+        parameters: ParameterSet,
+        iteration: u32,
+    ) -> LuaResult<()> {
+        self.set_context_parameters(parameters)?;
+        let values = &mut self.context.borrow_mut::<CallbackContext>()?.values;
+        values.insert(b"iteration", (iteration.wrapping_add(1)).into());
         Ok(())
     }
 

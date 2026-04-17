@@ -9,6 +9,7 @@ use crate::{
         callback::LuaCallback, cycle::CycleUserData, note::NoteUserData,
         parameter::ParameterUserData, sequence::SequenceUserData, LuaTimeoutHook,
     },
+    emitter::scripted_cycle::UserMapping,
     prelude::*,
     CycleSubCycle,
 };
@@ -1089,27 +1090,23 @@ pub(crate) fn emitter_from_value(
                 // NB: take instead of cloning: cycle userdata has no other usage than being defined
                 let userdata = userdata.take::<CycleUserData>()?;
                 let cycle = userdata.cycle;
-                let variables_callback = if let Some(func) = userdata.variables_function {
-                    Some(LuaCallback::new(lua, func)?)
+
+                let emitter = if let Some(func) = userdata.variables_function {
+                    ScriptedCycleEmitter::new(cycle.clone())
+                        .with_variables_callback(LuaCallback::new(lua, func)?, timeout_hook)?
                 } else {
-                    None
+                    ScriptedCycleEmitter::new(cycle.clone())
                 };
-                if let Some(mapping_function) = userdata.mapping_function {
-                    let mapping_callback = LuaCallback::new(lua, mapping_function)?;
-                    let emitter = ScriptedCycleEmitter::with_mapping_callback(
-                        cycle,
-                        variables_callback,
+
+                let emitter = match userdata.mapping {
+                    UserMapping::Table(hash_map) => emitter.with_mappings(hash_map),
+                    UserMapping::Function(func) => emitter.with_mapping_callback(
+                        LuaCallback::new(lua, func)?,
                         timeout_hook,
-                        mapping_callback,
                         time_base,
-                    )?;
-                    Ok(Box::new(emitter))
-                } else {
-                    let mappings = userdata.mappings;
-                    let emitter =
-                        ScriptedCycleEmitter::with_mappings(cycle, variables_callback, mappings);
-                    Ok(Box::new(emitter))
-                }
+                    )?,
+                };
+                Ok(Box::new(emitter))
             } else {
                 Err(LuaError::FromLuaConversionError {
                     from: "userdata",

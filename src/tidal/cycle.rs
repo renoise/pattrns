@@ -185,6 +185,10 @@ impl Cycle {
         &self.source
     }
 
+    pub fn iteration(&self) -> u32 {
+        self.state.iteration
+    }
+
     /// Query for the next iteration of output.
     ///
     /// Returns error when the number of generated events exceed the configured event limit.

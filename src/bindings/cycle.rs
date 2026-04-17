@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use mlua::prelude::*;
 
-use crate::{event::NoteEvent, tidal::Cycle};
+use crate::{emitter::scripted_cycle::UserMapping, event::NoteEvent, tidal::Cycle};
 
 use super::unwrap::{assign_cycle_vars_from_table, bad_argument_error, note_events_from_value};
 
@@ -10,8 +12,7 @@ use super::unwrap::{assign_cycle_vars_from_table, bad_argument_error, note_event
 #[derive(Clone, Debug)]
 pub struct CycleUserData {
     pub cycle: Cycle,
-    pub mappings: Vec<(String, Vec<Option<NoteEvent>>)>,
-    pub mapping_function: Option<LuaFunction>,
+    pub mapping: UserMapping<Vec<Option<NoteEvent>>, LuaFunction>,
     pub variables_function: Option<LuaFunction>,
 }
 
@@ -25,13 +26,10 @@ impl CycleUserData {
             cycle = cycle.with_seed(seed);
         }
 
-        let mappings = Vec::new();
-        let mapping_function = None;
         let variables_function = None;
         Ok(CycleUserData {
             cycle,
-            mappings,
-            mapping_function,
+            mapping: UserMapping::Table(HashMap::new()),
             variables_function,
         })
     }
@@ -41,18 +39,16 @@ impl LuaUserData for CycleUserData {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method_mut("map", |_lua, this, value: LuaValue| match value {
             LuaValue::Function(func) => Ok(Self {
-                mapping_function: Some(func),
-                mappings: Vec::new(),
+                mapping: UserMapping::Function(func),
                 ..this.clone()
             }),
             LuaValue::Table(table) => {
-                let mut mappings = Vec::new();
+                let mut mappings = HashMap::new();
                 for (k, v) in table.pairs::<LuaValue, LuaValue>().flatten() {
-                    mappings.push((k.to_string()?, note_events_from_value(&v, None)?));
+                    mappings.insert(k.to_string()?, note_events_from_value(&v, None)?);
                 }
                 Ok(Self {
-                    mapping_function: None,
-                    mappings,
+                    mapping: UserMapping::Table(mappings),
                     ..this.clone()
                 })
             }
@@ -111,6 +107,15 @@ mod test {
     };
 
     use pretty_assertions::assert_eq;
+
+    impl<V: Clone, F: Clone> UserMapping<V, F> {
+        fn as_vec(&self) -> Vec<(String, V)> {
+            match self.clone() {
+                Self::Table(map) => map.iter().map(|(s, v)| (s.clone(), v.clone())).collect(),
+                Self::Function(_) => vec![],
+            }
+        }
+    }
 
     fn new_test_engine() -> LuaResult<(Lua, LuaTimeoutHook)> {
         new_test_engine_with_timebase(&BeatTimeBase {
@@ -172,6 +177,50 @@ mod test {
     }
 
     #[test]
+    fn variables_function() -> LuaResult<()> {
+        let time_base = BeatTimeBase {
+            beats_per_min: 120.0,
+            beats_per_bar: 4,
+            samples_per_sec: 44100,
+        };
+
+        let (lua, timeout_hook) = new_test_engine_with_timebase(&time_base)?;
+
+        {
+            let mapped_cycle = evaluate_cycle_userdata(
+                &lua,
+                r#"
+                cycle("a b c $x $y $z"):var(function(context)
+                    return {
+                        x = "d" .. context.iteration,
+                        y = "e",
+                        z = "f",
+                    }
+                end)"#,
+            )?;
+            let variables_callback =
+                LuaCallback::new(&lua, mapped_cycle.variables_function.unwrap().clone())?;
+            let mut event_iter = ScriptedCycleEmitter::new(mapped_cycle.cycle)
+                .with_variables_callback(variables_callback, &timeout_hook)?;
+            assert_eq!(
+                event_iter
+                    .run(RhythmEvent::default(), true)
+                    .map(|events| events.into_iter().map(|e| e.event).collect::<Vec<_>>()),
+                Some(vec![
+                    Event::NoteEvents(vec![new_note(Note::A4)]),
+                    Event::NoteEvents(vec![new_note(Note::B4)]),
+                    Event::NoteEvents(vec![new_note(Note::C4)]),
+                    Event::NoteEvents(vec![new_note(Note::D1)]),
+                    Event::NoteEvents(vec![new_note(Note::E4)]),
+                    Event::NoteEvents(vec![new_note(Note::F4)]),
+                ])
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn mappings() -> LuaResult<()> {
         let (lua, _) = new_test_engine()?;
 
@@ -180,21 +229,17 @@ mod test {
             r#"cycle("a b c"):map({a = "c0", b = 48, c = { key = "c6" }})"#,
         )?;
         assert_eq!(
-            mapped_cycle
-                .mappings
-                .clone()
-                .into_iter()
-                .collect::<HashMap<_, _>>(),
-            HashMap::from([
+            mapped_cycle.mapping,
+            UserMapping::Table(HashMap::from([
                 ("a".to_string(), vec![new_note(Note::C0)]),
                 ("b".to_string(), vec![new_note(Note::C4)]),
                 ("c".to_string(), vec![new_note(Note::C6)]),
-            ])
+            ]))
         );
 
         // check if mappings are applied correctly
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mapping.as_vec());
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -209,7 +254,7 @@ mod test {
         // check note properties
         let mapped_cycle = evaluate_cycle_userdata(&lua, r#"cycle("a:1:g0.1:v0.1:p-1.0:d0.3")"#)?;
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mapping.as_vec());
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -230,7 +275,7 @@ mod test {
             r#"cycle("a:1 a:2 a"):map({ a = { key = 48, instrument = 66 } })"#,
         )?;
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mapping.as_vec());
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -248,7 +293,7 @@ mod test {
             r#"cycle("a:1:v.1 a"):map({ a = { key = 48, instrument = 66, volume = 1.0 } })"#,
         )?;
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mapping.as_vec());
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -291,13 +336,16 @@ mod test {
                     end
                 end)"#,
         )?;
-        let mapping_callback =
-            LuaCallback::new(&lua, mapped_cycle.mapping_function.unwrap().clone())?;
-        let mut event_iter = ScriptedCycleEmitter::with_mapping_callback(
-            mapped_cycle.cycle,
-            None,
-            &timeout_hook,
+        let mapping_callback = LuaCallback::new(
+            &lua,
+            match mapped_cycle.mapping {
+                UserMapping::Table(_) => panic!("lua function for mapping was defined"),
+                UserMapping::Function(f) => f.clone(),
+            },
+        )?;
+        let mut event_iter = ScriptedCycleEmitter::new(mapped_cycle.cycle).with_mapping_callback(
             mapping_callback,
+            &timeout_hook,
             &time_base,
         )?;
         assert_eq!(

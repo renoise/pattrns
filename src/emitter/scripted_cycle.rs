@@ -19,6 +19,12 @@ use crate::{
 
 // -------------------------------------------------------------------------------------------------
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum UserMapping<V: Clone, F: Clone> {
+    Table(HashMap<String, V>),
+    Function(F),
+}
+
 /// Emits a vector of [`EmitterEvent`]s from a [`Cycle`].
 ///
 /// Channels from cycle are merged down into note events on different voices.
@@ -30,56 +36,64 @@ use crate::{
 pub struct ScriptedCycleEmitter {
     cycle: Cycle,
     parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
-    mappings: HashMap<String, Vec<Option<NoteEvent>>>,
-    mapping_callback: Option<LuaCallback>,
-    variables_callback: Option<LuaCallback>,
-    timeout_hook: Option<LuaTimeoutHook>,
+    mappings: UserMapping<Vec<Option<NoteEvent>>, (LuaCallback, LuaTimeoutHook)>,
+    variables_callback: Option<(LuaCallback, LuaTimeoutHook)>,
     channel_steps: Vec<usize>,
 }
 
 impl ScriptedCycleEmitter {
-    /// Return a new cycle with the given value mappings applied.
-    pub(crate) fn with_mappings(
-        cycle: Cycle,
-        variables_callback: Option<LuaCallback>,
-        mappings: Vec<(String, Vec<Option<NoteEvent>>)>,
-    ) -> Self {
-        let parameters = vec![];
-        let mappings = mappings.into_iter().collect();
-        let mapping_callback = None;
-        let timeout_hook = None;
-        let channel_steps = vec![];
+    pub(crate) fn new(cycle: Cycle) -> Self {
         Self {
             cycle,
-            parameters,
-            mappings,
-            mapping_callback,
-            variables_callback,
-            timeout_hook,
-            channel_steps,
+            parameters: vec![],
+            mappings: UserMapping::Table(HashMap::new()),
+            variables_callback: None,
+            channel_steps: vec![],
         }
+    }
+
+    /// Return a new cycle with the given value mappings applied.
+    pub(crate) fn with_mappings(self, mappings: HashMap<String, Vec<Option<NoteEvent>>>) -> Self {
+        let mappings = UserMapping::Table(mappings);
+        Self { mappings, ..self }
+    }
+
+    pub(crate) fn with_variables_callback(
+        self,
+        mut variables_callback: LuaCallback,
+        timeout_hook: &LuaTimeoutHook,
+    ) -> LuaResult<Self> {
+        // create a new timeout_hook instance and reset it before calling the function
+        let mut timeout_hook = timeout_hook.clone();
+        timeout_hook.reset();
+        let iteration = 0;
+        variables_callback.set_cycle_var_context(
+            self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
+            iteration,
+        )?;
+        Ok(Self {
+            variables_callback: Some((variables_callback, timeout_hook)),
+            ..self
+        })
     }
 
     /// Return a new cycle with the given mapping callback applied.
     pub(crate) fn with_mapping_callback(
-        cycle: Cycle,
-        variables_callback: Option<LuaCallback>,
+        self,
+        mut mapping_callback: LuaCallback,
         timeout_hook: &LuaTimeoutHook,
-        mapping_callback: LuaCallback,
         time_base: &BeatTimeBase,
     ) -> LuaResult<Self> {
         // create a new timeout_hook instance and reset it before calling the function
         let mut timeout_hook = timeout_hook.clone();
         timeout_hook.reset();
         let parameters = vec![];
-        let mappings = HashMap::new();
         // initialize emitter context for the function
-        let mut mapping_callback = mapping_callback;
         let playback_state = ContextPlaybackState::Running;
         let channel = 0;
         let step = 0;
         let step_length = 0.0;
-        mapping_callback.set_cycle_context(
+        mapping_callback.set_cycle_map_context(
             playback_state,
             time_base,
             channel,
@@ -88,13 +102,10 @@ impl ScriptedCycleEmitter {
         )?;
         let channel_steps = vec![];
         Ok(Self {
-            cycle,
+            mappings: UserMapping::Function((mapping_callback, timeout_hook)),
             parameters,
-            mappings,
-            mapping_callback: Some(mapping_callback),
-            variables_callback,
-            timeout_hook: Some(timeout_hook),
             channel_steps,
+            ..self
         })
     }
 
@@ -107,27 +118,32 @@ impl ScriptedCycleEmitter {
         event: CycleEvent,
     ) -> LuaResult<Vec<Option<NoteEvent>>> {
         let mut note_events = {
-            if let Some(mapping_callback) = self.mapping_callback.as_mut() {
-                // update step in context
-                mapping_callback.set_context_cycle_step(
-                    channel_index,
-                    channel_step,
-                    step_length,
-                )?;
-                // call mapping function
-                let result = mapping_callback.call_with_arg(event.as_str().as_ref())?;
-                note_events_from_value(&result, None)?
-            } else if let Some(note_events) = self.mappings.get(event.as_str().as_ref()) {
-                // apply custom note mapping
-                note_events.clone()
-            } else {
-                // try converting the cycle value to a single note
-                event.value().try_into().map_err(LuaError::RuntimeError)?
+            match &mut self.mappings {
+                UserMapping::Function((mapping_callback, _timeout_hook)) => {
+                    // update step in context
+                    mapping_callback.set_context_cycle_step(
+                        channel_index,
+                        channel_step,
+                        step_length,
+                    )?;
+                    // call mapping function
+                    let result = mapping_callback.call_with_arg(event.as_str().as_ref())?;
+                    note_events_from_value(&result, None)?
+                }
+                UserMapping::Table(hash_map) => {
+                    if let Some(note_events) = hash_map.get(event.as_str().as_ref()) {
+                        // apply custom note mapping
+                        note_events.clone()
+                    } else {
+                        // try converting the cycle value to a single note
+                        event.value().try_into().map_err(LuaError::RuntimeError)?
+                    }
+                }
             }
         };
         // verify that all identifiers are mapped
         if (note_events.is_empty() || note_events.iter().all(|f| f.is_none()))
-            && self.mapping_callback.is_none()
+            && !matches!(self.mappings, UserMapping::Function((_, _)))
             && !matches!(event.value(), CycleValue::Rest | CycleValue::Hold)
         {
             return Err(LuaError::runtime(format!(
@@ -152,14 +168,12 @@ impl ScriptedCycleEmitter {
                 .set_var(parameter.id(), parameter.into_var(enum_values));
         }
 
-        if let Some(variables_callback) = &mut self.variables_callback {
-            let playback_state = ContextPlaybackState::Running;
-            if let Err(err) = variables_callback.set_context_playback_state(playback_state) {
-                variables_callback.handle_error(&err);
-            }
-            if let Err(err) = variables_callback
-                .set_context_parameters(self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect())
-            {
+        if let Some((variables_callback, timeout_hook)) = &mut self.variables_callback {
+            timeout_hook.reset();
+            if let Err(err) = variables_callback.set_cycle_var_context(
+                self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
+                self.cycle.iteration(),
+            ) {
                 variables_callback.handle_error(&err);
             }
 
@@ -205,12 +219,10 @@ impl ScriptedCycleEmitter {
                 }
             }
         };
-        // reset timeout hook for mapping functions
-        if let Some(timeout_hook) = &mut self.timeout_hook {
-            timeout_hook.reset();
-        }
         // set callback playback state
-        if let Some(callback) = &mut self.mapping_callback {
+        if let UserMapping::Function((callback, timeout_hook)) = &mut self.mappings {
+            // reset timeout hook for mapping functions
+            timeout_hook.reset();
             let playback_state = ContextPlaybackState::Running;
             if let Err(err) = callback.set_context_playback_state(playback_state) {
                 callback.handle_error(&err);
@@ -232,7 +244,7 @@ impl ScriptedCycleEmitter {
                 let step_length = length.to_f64().unwrap_or(0.0);
                 match self.cycle_to_note_event(channel_index, channel_step, step_length, event) {
                     Err(err) => {
-                        if let Some(callback) = &self.mapping_callback {
+                        if let UserMapping::Function((callback, _timeout_hook)) = &self.mappings {
                             callback.handle_error(&err)
                         } else {
                             let source = self.cycle.source().clone();
@@ -255,76 +267,77 @@ impl ScriptedCycleEmitter {
     /// Skip next batch of events from the cycle.
     /// This maintains cycle mapping callback states as well, if needed.
     fn advance(&mut self) {
-        if let Some(mapping_callback) = &mut self.mapping_callback {
-            // run the cycle event generator
-            let events = {
-                match self.cycle.generate() {
-                    Ok(events) => events,
-                    Err(err) => {
-                        mapping_callback.handle_error(&LuaError::RuntimeError(err));
-                        return;
+        match &mut self.mappings {
+            UserMapping::Function((mapping_callback, timeout_hook)) => {
+                // run the cycle event generator
+                let events = {
+                    match self.cycle.generate() {
+                        Ok(events) => events,
+                        Err(err) => {
+                            mapping_callback.handle_error(&LuaError::RuntimeError(err));
+                            return;
+                        }
                     }
-                }
-            };
-            if mapping_callback.is_stateful().unwrap_or(true) {
-                // reset timeout hooks
-                if let Some(timeout_hook) = &mut self.timeout_hook {
+                };
+                if mapping_callback.is_stateful().unwrap_or(true) {
+                    // reset timeout hooks
                     timeout_hook.reset();
-                }
-                // set playback state
-                let playback_state = ContextPlaybackState::Seeking;
-                if let Err(err) = mapping_callback.set_context_playback_state(playback_state) {
-                    mapping_callback.handle_error(&err);
-                }
-                // run stateful callbacks but ignore results
-                for (channel_index, channel_events) in events.into_iter().enumerate() {
-                    if self.channel_steps.len() <= channel_index {
-                        self.channel_steps.resize(channel_index + 1, 0);
+                    // set playback state
+                    let playback_state = ContextPlaybackState::Seeking;
+                    if let Err(err) = mapping_callback.set_context_playback_state(playback_state) {
+                        mapping_callback.handle_error(&err);
                     }
-                    for event in channel_events.into_iter() {
-                        // move step counter
-                        let channel_step = self.channel_steps[channel_index];
-                        self.channel_steps[channel_index] += 1;
-                        // update step in context
-                        let step_length = event.span().length().to_f64().unwrap_or(0.0);
-                        if let Err(err) = mapping_callback.set_context_cycle_step(
-                            channel_index,
-                            channel_step,
-                            step_length,
-                        ) {
-                            mapping_callback.handle_error(&err);
-                            return;
+                    // run stateful callbacks but ignore results
+                    for (channel_index, channel_events) in events.into_iter().enumerate() {
+                        if self.channel_steps.len() <= channel_index {
+                            self.channel_steps.resize(channel_index + 1, 0);
                         }
-                        // call mapping function
-                        if let Err(err) = mapping_callback.call_with_arg(event.as_str().as_ref()) {
-                            mapping_callback.handle_error(&err);
-                            return;
+                        for event in channel_events.into_iter() {
+                            // move step counter
+                            let channel_step = self.channel_steps[channel_index];
+                            self.channel_steps[channel_index] += 1;
+                            // update step in context
+                            let step_length = event.span().length().to_f64().unwrap_or(0.0);
+                            if let Err(err) = mapping_callback.set_context_cycle_step(
+                                channel_index,
+                                channel_step,
+                                step_length,
+                            ) {
+                                mapping_callback.handle_error(&err);
+                                return;
+                            }
+                            // call mapping function
+                            if let Err(err) =
+                                mapping_callback.call_with_arg(event.as_str().as_ref())
+                            {
+                                mapping_callback.handle_error(&err);
+                                return;
+                            }
                         }
                     }
-                }
-            } else {
-                // advance channel_steps for generated each event
-                for (channel_index, channel_events) in events.into_iter().enumerate() {
-                    if self.channel_steps.len() <= channel_index {
-                        self.channel_steps.resize(channel_index + 1, 0);
+                } else {
+                    // advance channel_steps for generated each event
+                    for (channel_index, channel_events) in events.into_iter().enumerate() {
+                        if self.channel_steps.len() <= channel_index {
+                            self.channel_steps.resize(channel_index + 1, 0);
+                        }
+                        self.channel_steps[channel_index] += channel_events.len();
                     }
-                    self.channel_steps[channel_index] += channel_events.len();
                 }
             }
-        } else {
-            // no mapping callback present: just advance the cycle
-            self.cycle.advance();
-            self.channel_steps.clear();
+            UserMapping::Table(_) => {
+                // no mapping callback present: just advance the cycle
+                self.cycle.advance();
+                self.channel_steps.clear();
+            }
         }
     }
 }
 
 impl Emitter for ScriptedCycleEmitter {
     fn set_time_base(&mut self, time_base: &BeatTimeBase) {
-        if let Some(timeout_hook) = &mut self.timeout_hook {
+        if let UserMapping::Function((callback, timeout_hook)) = &mut self.mappings {
             timeout_hook.reset();
-        }
-        if let Some(callback) = &mut self.mapping_callback {
             if let Err(err) = callback.set_context_time_base(time_base) {
                 callback.handle_error(&err);
             }
@@ -332,10 +345,8 @@ impl Emitter for ScriptedCycleEmitter {
     }
 
     fn set_trigger_event(&mut self, event: &Event) {
-        if let Some(timeout_hook) = &mut self.timeout_hook {
+        if let UserMapping::Function((callback, timeout_hook)) = &mut self.mappings {
             timeout_hook.reset();
-        }
-        if let Some(callback) = &mut self.mapping_callback {
             if let Err(err) = callback.set_context_trigger_event(event) {
                 callback.handle_error(&err);
             }
@@ -373,10 +384,8 @@ impl Emitter for ScriptedCycleEmitter {
             .collect();
 
         // pass parameters to the mapping callback context
-        if let Some(timeout_hook) = &mut self.timeout_hook {
+        if let UserMapping::Function((callback, timeout_hook)) = &mut self.mappings {
             timeout_hook.reset();
-        }
-        if let Some(callback) = &mut self.mapping_callback {
             if let Err(err) = callback.set_context_parameters(parameters) {
                 callback.handle_error(&err);
             }
@@ -404,11 +413,8 @@ impl Emitter for ScriptedCycleEmitter {
     fn reset(&mut self) {
         // reset cycle
         self.cycle.reset();
-        if let Some(timeout_hook) = &mut self.timeout_hook {
-            // reset timeout
+        if let UserMapping::Function((callback, timeout_hook)) = &mut self.mappings {
             timeout_hook.reset();
-        }
-        if let Some(callback) = &mut self.mapping_callback {
             // reset step counter
             let channel = 0;
             let step = 0;
