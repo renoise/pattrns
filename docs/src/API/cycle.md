@@ -132,8 +132,10 @@
 
 > Assign variables to be used inside the cycle (with `$` prefix).
 > 
-> By default the parameters you set on the pattern will get assigned as variables by their name,
-> but you can also define static variables by supplying a table to `var` or create the same via a callback.
+> By default the parameters you define will get assigned as variables by their name,
+> but you can also declare (or override) such variables by supplying a table to `var`,
+> or using a callback that returns a table.
+> Callbacks receive a context with parameters and an iteration counter.
 > 
 > #### examples:
 > ```lua

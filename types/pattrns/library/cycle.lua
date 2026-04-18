@@ -93,7 +93,7 @@ function Cycle:map(map) end
 ---
 ---By default any parameter you define will be available to the cycle as a variable
 ---but you can override and declare additional variables by passing in a table of them
----or passing a function that can returns such a table.
+---or passing a function that returns such a table.
 ---
 ---### examples:
 ---```lua
