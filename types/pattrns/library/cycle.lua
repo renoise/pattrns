@@ -25,9 +25,10 @@ error("Do not try to execute this file. It's just a type definition file.")
 ---
 ---Specifies how the cycle currently is running.
 ---@field playback PlaybackState
----how often the cycle has been run.
+---Iteration counter for the cycle that increases once per the whole cycle's output
+---Starts from 1 when the cycle starts running or after it got reset.
 ---@field iteration integer
----
+
 ----------------------------------------------------------------------------------------------------
 
 ---@class Cycle
