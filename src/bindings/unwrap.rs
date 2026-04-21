@@ -9,7 +9,7 @@ use crate::{
         callback::LuaCallback, cycle::CycleUserData, note::NoteUserData,
         parameter::ParameterUserData, sequence::SequenceUserData, LuaTimeoutHook,
     },
-    emitter::scripted_cycle::UserMapping,
+    emitter::scripted_cycle::ScriptedCycleMapping,
     prelude::*,
     CycleSubCycle,
 };
@@ -1033,15 +1033,15 @@ pub(crate) fn gate_from_value(
 
 // -------------------------------------------------------------------------------------------------
 
-fn cycle_to_lua_error(arg: &LuaValue, string: String) -> LuaError {
-    LuaError::FromLuaConversionError {
-        from: arg.type_name(),
-        to: "cycle variable".to_string(),
-        message: Some(string),
-    }
-}
-
 fn subcycle_from_value(arg: &LuaValue) -> LuaResult<CycleSubCycle> {
+    fn cycle_to_lua_error(arg: &LuaValue, string: String) -> LuaError {
+        LuaError::FromLuaConversionError {
+            from: arg.type_name(),
+            to: "cycle variable".to_string(),
+            message: Some(string),
+        }
+    }
+
     let subcycle_result = match arg {
         LuaValue::Integer(x) => {
             Ok(CycleSubCycle::integer((*x).try_into().map_err(|err| {
@@ -1090,21 +1090,22 @@ pub(crate) fn emitter_from_value(
                 // NB: take instead of cloning: cycle userdata has no other usage than being defined
                 let userdata = userdata.take::<CycleUserData>()?;
                 let cycle = userdata.cycle;
-
+                // with variables
                 let emitter = if let Some(func) = userdata.variables_function {
-                    ScriptedCycleEmitter::new(cycle.clone())
-                        .with_variables_callback(LuaCallback::new(lua, func)?, timeout_hook)?
-                } else {
-                    ScriptedCycleEmitter::new(cycle.clone())
-                };
-
-                let emitter = match userdata.mapping {
-                    UserMapping::Table(hash_map) => emitter.with_mappings(hash_map),
-                    UserMapping::Function(func) => emitter.with_mapping_callback(
+                    ScriptedCycleEmitter::new(cycle.clone()).with_variable_callback(
                         LuaCallback::new(lua, func)?,
                         timeout_hook,
                         time_base,
-                    )?,
+                    )?
+                } else {
+                    ScriptedCycleEmitter::new(cycle.clone())
+                };
+                // with mappings
+                let emitter = match userdata.mapping {
+                    ScriptedCycleMapping::Table(map) => emitter.with_mappings(map),
+                    ScriptedCycleMapping::Function(callback) => {
+                        emitter.with_mapping_callback(callback, timeout_hook, time_base)?
+                    }
                 };
                 Ok(Box::new(emitter))
             } else {

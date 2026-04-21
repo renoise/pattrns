@@ -20,6 +20,14 @@ error("Do not try to execute this file. It's just a type definition file.")
 ---step length fraction within the cycle, where 1 is the total duration of a single cycle run.
 ---@field step_length number
 
+---Context passed to 'cycle:var` functions.
+---@class CycleVarContext : TimeContext
+---
+---Specifies how the cycle currently is running.
+---@field playback PlaybackState
+---how often the cycle has been run.
+---@field iteration integer
+---
 ----------------------------------------------------------------------------------------------------
 
 ---@class Cycle
@@ -28,6 +36,7 @@ local Cycle = {}
 ----------------------------------------------------------------------------------------------------
 
 ---@alias CycleMapNoteValue NoteValue|(NoteValue[])|Note
+---@alias CycleMapTable { [string]: CycleMapNoteValue }
 ---@alias CycleMapFunction fun(context: CycleMapContext, value: string):CycleMapNoteValue
 ---@alias CycleMapGenerator fun(context: CycleMapContext, value: string):CycleMapFunction
 
@@ -80,14 +89,15 @@ local Cycle = {}
 ---  end
 ---end)
 ---```
----@param map { [string]: CycleMapNoteValue }|CycleMapFunction|CycleMapGenerator
+---@param map CycleMapTable|CycleMapFunction|CycleMapGenerator
 ---@return Cycle
 ---@nodiscard
 function Cycle:map(map) end
 
 ---@alias CycleVarValue string|number|integer|boolean
----@alias CycleVarMap {[string]: CycleVarValue}
----@alias CycleVarFunction fun(context: CycleMapContext):CycleVarMap
+---@alias CycleVarTable {[string]: CycleVarValue}
+---@alias CycleVarFunction fun(context: CycleVarContext):CycleVarTable
+---@alias CycleVarGenerator fun(context: CycleVarContext):CycleVarFunction
 
 ---Assign variables to be used inside the main cycle script via `$name` notation
 ---
@@ -103,7 +113,7 @@ function Cycle:map(map) end
 ---  b = "e f a c"
 ---})
 ---```
----@param variables CycleVarMap|CycleVarFunction
+---@param variables CycleVarTable|CycleVarFunction|CycleVarGenerator
 ---@return Cycle
 ---@nodiscard
 function Cycle:var(variables) end

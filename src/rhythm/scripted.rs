@@ -159,7 +159,7 @@ impl Rhythm for ScriptedRhythm {
         // reset timeout
         self.timeout_hook.reset();
         // update function context with the new parameters
-        if let Err(err) = self.callback.set_context_parameters(parameters) {
+        if let Err(err) = self.callback.set_context_parameters(&parameters) {
             self.callback.handle_error(&err);
         }
     }
