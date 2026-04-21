@@ -64,4 +64,6 @@ pub use super::{
 
 #[cfg(feature = "player")]
 // all public player types
-pub use super::player::{NewNoteAction, PlaybackContext, Player};
+pub use super::player::{
+    PlaybackContext, Player, PlayerHandle, PlayerNewNoteAction, PlayerSequencer,
+};

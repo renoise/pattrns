@@ -20,7 +20,7 @@ use pattrns::{
         phonic::{generators, DefaultOutputDevice, Generator, GeneratorPlaybackOptions},
         Player,
     },
-    BeatTimeBase, BeatTimeStep, Phrase, Sequence,
+    BeatTimeBase, BeatTimeStep, Phrase,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -123,15 +123,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     })?;
 
-    // (re)run all scripts
-    let mut previous_sequence = None;
-    while !stop_running.load(Ordering::Relaxed) {
-        if script_files_changed.load(Ordering::Relaxed) {
-            script_files_changed.store(false, Ordering::Relaxed);
-            log::info!("Rebuilding all patterns...");
-        }
-
-        // build final phrase
+    // Build a phrase from all current script files
+    let build_phrase = || {
         let load = |file_name: &Path| {
             new_pattern_from_file(beat_time, None, file_name).unwrap_or_else(|err| {
                 log::warn!(
@@ -145,33 +138,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )))
             })
         };
-        let phrase = Phrase::new(
+        Phrase::new(
             beat_time,
             script_paths.iter().map(|path| load(path)).collect(),
             BeatTimeStep::Bar(4.0),
-        );
+        )
+    };
 
-        // wrap phrase into a sequence
-        let mut sequence = Sequence::new(beat_time, vec![phrase]);
-
-        // run until we got a stop signal or on script file changes
-        let reset_playback_pos = false;
-        player.run_until(
-            previous_sequence.as_mut(),
-            &mut sequence,
-            &beat_time,
-            reset_playback_pos,
-            {
-                || {
-                    script_files_changed.load(Ordering::Relaxed)
-                        || stop_running.load(Ordering::Relaxed)
-                }
-            },
-        );
-
-        // memorize previous sequence for swapping
-        previous_sequence.replace(sequence);
+    // Start playing and keep the handle alive across script reloads
+    let mut handle = player.play_phrase(build_phrase());
+    while !stop_running.load(Ordering::Relaxed) {
+        let sleep_duration = handle.run(player.inner().output_sample_frame_position());
+        if script_files_changed.load(Ordering::Relaxed) {
+            script_files_changed.store(false, Ordering::Relaxed);
+            log::info!("Rebuilding all patterns...");
+            handle.swap_phrase(build_phrase());
+        }
+        std::thread::sleep(sleep_duration);
     }
+    handle.stop();
 
     #[cfg(feature = "dhat-profiler")]
     drop(profiler);

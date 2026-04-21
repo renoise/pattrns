@@ -6,10 +6,14 @@ use emscripten_rs_sys::{emscripten_request_animation_frame_loop, emscripten_run_
 use serde::ser::SerializeStruct;
 
 use pattrns::{
-    player::phonic::{
-        generators::{AhdsrParameters, Sampler},
-        sources::PreloadedFileSource,
-        FilePlaybackOptions, Generator, GeneratorPlaybackOptions, DefaultOutputDevice
+    player::{
+        phonic::{
+            generators::{AhdsrParameters, Sampler, Sequencer},
+            sources::PreloadedFileSource,
+            DefaultOutputDevice, FilePlaybackOptions, Generator, GeneratorPlaybackHandle,
+            GeneratorPlaybackOptions,
+        },
+        PlayerSequencer,
     },
     prelude::*,
 };
@@ -129,7 +133,7 @@ struct Playground {
     playing: bool,
     player: Player,
     samples: Vec<SampleEntry>,
-    sequence: Option<Sequence>,
+    current_generator_handle: Option<GeneratorPlaybackHandle>,
     pattern: Option<Rc<RefCell<dyn Pattern>>>,
     time_base: BeatTimeBase,
     time_base_changed: bool,
@@ -139,9 +143,9 @@ struct Playground {
     script_parameters: Vec<ScriptParameter>,
     script_parameter_values: HashMap<String, f64>,
     script_error: String,
+    sequencer: Option<PlayerSequencer<Phrase>>,
+    last_sequencer_run_time: u64,
     playing_notes: Vec<PlayingNote>,
-    output_start_sample_time: u64,
-    emitted_sample_time: u64,
 }
 
 impl Playground {
@@ -208,7 +212,6 @@ impl Playground {
         }
 
         // sequence & pattern
-        let sequence = None;
         let pattern = None;
 
         // time base
@@ -226,12 +229,16 @@ impl Playground {
         let script_parameter_values = HashMap::new();
         let script_error = String::new();
 
-        // MIDI note playback
+        // MIDI note state
         let playing_notes = Vec::new();
+
+        // sequencer
+        let sequencer = None;
+        let last_sequencer_run_time = 0;
 
         // default instrument
         let instrument_index = (!samples.is_empty()).then(|| samples.len() - 1);
-        if let Some(instrument_index) = instrument_index {
+        let current_generator_handle = if let Some(instrument_index) = instrument_index {
             let sampler = Sampler::from_file_source(
                 samples[instrument_index]
                     .file_source
@@ -244,14 +251,13 @@ impl Playground {
             .and_then(|sampler| sampler.with_ahdsr(Self::default_ahdsr_parameters()))
             .map_err(|err| err.to_string())?;
 
-            player
+            let handle = player
                 .set_generator(0, sampler.into_box(), None)
                 .map_err(|err| err.to_string())?;
-        }
-
-        // playback time
-        let output_start_sample_time = player.inner().output_sample_frame_position();
-        let emitted_sample_time = 0;
+            Some(handle)
+        } else {
+            None
+        };
 
         // install emscripten frame timer
         unsafe {
@@ -263,19 +269,19 @@ impl Playground {
             playing,
             player,
             samples,
-            sequence,
+            current_generator_handle,
             pattern,
             time_base,
             time_base_changed,
+            instrument_index,
             script_content,
             script_changed,
             script_parameters,
             script_parameter_values,
             script_error,
+            sequencer,
+            last_sequencer_run_time,
             playing_notes,
-            instrument_index,
-            output_start_sample_time,
-            emitted_sample_time,
         })
     }
 
@@ -344,12 +350,11 @@ impl Playground {
     /// Starts playback of the current sequence.
     pub fn start_playing(&mut self) {
         if !self.playing {
-            // reset play head
-            self.output_start_sample_time = self.player.inner().output_sample_frame_position();
-            self.emitted_sample_time = 0;
-            // reset sequence
-            if let Some(sequence) = self.sequence.as_mut() {
-                sequence.reset();
+            // reset the sequencer
+            if let Some(sequencer) = &mut self.sequencer {
+                let start_time = self.player.inner().output_sample_frame_position();
+                sequencer.reset(start_time);
+                self.last_sequencer_run_time = start_time;
             }
             // start playback
             self.playing = true;
@@ -376,9 +381,6 @@ impl Playground {
     pub fn handle_midi_note_on(&mut self, note: u8, velocity: u8) {
         assert!(note as usize <= Self::NUM_MIDI_NOTES);
         if self.playing_notes.is_empty() || self.pattern_slot(note as usize).is_none() {
-            // reset play head
-            self.output_start_sample_time = self.player.inner().output_sample_frame_position();
-            self.emitted_sample_time = 0;
             // memorize playing note
             let sample_offset = 0;
             let new_note = PlayingNote {
@@ -394,7 +396,12 @@ impl Playground {
             let playback_preload = self
                 .time_base
                 .seconds_to_samples(self.player.playback_preload_time().as_secs_f64());
-            let sample_offset = self.emitted_sample_time.saturating_sub(playback_preload);
+            let current_relative_time = self
+                .sequencer
+                .as_ref()
+                .map(|s| s.current_time())
+                .unwrap_or(0);
+            let sample_offset = current_relative_time.saturating_sub(playback_preload);
             let new_note = PlayingNote {
                 note,
                 velocity,
@@ -426,16 +433,21 @@ impl Playground {
         {
             // remove playing note
             self.playing_notes.remove(playing_notes_index);
-            // remove the pattern slot from sequence's phrase
-            if let Some(pattern_slot) = self.pattern_slot(note as usize) {
-                *pattern_slot = PatternSlot::Stop;
-                // stop pending from the note
-                self.player.stop_notes_in_pattern_slot(note as usize);
+            // remove the pattern slot from the phrase and stop pending notes immediately
+            if let Some(sequencer) = &mut self.sequencer {
+                if let Some(slot) = sequencer
+                    .phrase_mut()
+                    .pattern_slots_mut()
+                    .get_mut(note as usize)
+                {
+                    *slot = PatternSlot::Stop;
+                }
+                sequencer.stop_notes_in_pattern_slot(note as usize);
             }
+            self.script_changed = true;
             // restore default playback in `run` with the last note removed
             if self.playing_notes.is_empty() {
                 let _ = self.player.stop_all_notes();
-                self.script_changed = true;
             }
         }
     }
@@ -468,14 +480,23 @@ impl Playground {
             )
             .and_then(|sampler| sampler.with_ahdsr(Self::default_ahdsr_parameters()))
             .map_err(|err| err.to_string())?;
-            self.player
+            let handle = self
+                .player
                 .set_generator(0, sampler.into_box(), None)
                 .map_err(|err| err.to_string())?;
-            Ok(())
+            self.current_generator_handle = Some(handle.clone());
+            if let Some(sequencer) = &mut self.sequencer {
+                sequencer.set_generator(0, Some(handle));
+            }
         } else {
             self.player.clear_generator(0);
-            Ok(())
+            self.current_generator_handle = None;
+            if let Some(sequencer) = &mut self.sequencer {
+                sequencer.set_generator(0, None);
+            }
         }
+        self.script_changed = true;
+        Ok(())
     }
 
     /// Sets a script parameter value.
@@ -523,9 +544,15 @@ impl Playground {
         )
         .and_then(|sampler| sampler.with_ahdsr(Self::default_ahdsr_parameters()))
         .map_err(|err| err.to_string())?;
-        self.player
+        let handle = self
+            .player
             .set_generator(0, sampler.into_box(), None)
             .map_err(|err| err.to_string())?;
+        self.current_generator_handle = Some(handle.clone());
+        if let Some(sequencer) = &mut self.sequencer {
+            sequencer.set_generator(0, Some(handle));
+        }
+        self.script_changed = true;
         // add to sample list
         let name = Path::new(&file_name)
             .file_stem()
@@ -543,11 +570,13 @@ impl Playground {
 
     /// Reset sample pool, removing all samples
     pub fn clear_samples(&mut self) {
-        // Clear the sample pool
         self.samples.clear();
-        // Reset the current instrument
         self.instrument_index = None;
         self.player.clear_generator(0);
+        self.current_generator_handle = None;
+        if let Some(sequencer) = &mut self.sequencer {
+            sequencer.set_generator(0, None);
+        }
         self.script_changed = true;
     }
 
@@ -567,7 +596,7 @@ impl Playground {
     /// Main playback loop: Handles player state updates and runs the player
     fn run(&mut self) {
         // apply script content changes
-        if self.script_changed || self.sequence.is_none() {
+        if self.script_changed || self.sequencer.is_none() {
             self.rebuild_sequence();
         }
 
@@ -580,45 +609,36 @@ impl Playground {
         debug_assert!(
             !self.script_changed
                 && !self.time_base_changed
-                && self.sequence.is_some()
+                && self.sequencer.is_some()
                 && self.pattern.is_some(),
-            "Should have a valid sequence and pattern here"
+            "Should have a valid sequencer and pattern here"
         );
 
         // check if audio output has been suspended by the browser
         let suspended = self.player.inner().output_suspended();
 
-        // run the player, when playing and audio output is not suspended
+        // run the sequencer, when playing and audio output is not suspended
         if !suspended && (self.playing || !self.playing_notes.is_empty()) {
-            // calculate samples to emit
-            let samples_to_emit = self.player.calculate_samples_to_emit(
-                &self.time_base,
-                self.output_start_sample_time,
-                self.emitted_sample_time,
-            );
-            let playback_preload = self
-                .time_base
-                .seconds_to_samples(self.player.playback_preload_time().as_secs_f64());
-            if samples_to_emit > 4 * playback_preload {
-                // we lost too much time: maybe because the browser suspended the run loop
-                self.player.advance_until_time(
-                    self.sequence.as_mut().unwrap(),
-                    self.emitted_sample_time + samples_to_emit,
-                );
-            } else if samples_to_emit > 0 {
-                // continue generating events in real-time
-                self.player.run_until_time(
-                    self.sequence.as_mut().unwrap(),
-                    self.output_start_sample_time,
-                    self.emitted_sample_time + samples_to_emit,
-                );
-                // handle runtime errors
+            if let Some(sequencer) = &mut self.sequencer {
+                let now = self.player.inner().output_sample_frame_position();
+                let preload_samples = (self.player.playback_preload_time().as_secs_f64()
+                    * self.time_base.samples_per_sec as f64)
+                    as u64;
+                // Detect audio-clock forward jump (browser tab suspended/resumed):
+                // advance_to skips stale events rather than replaying them in a burst.
+                if now > self.last_sequencer_run_time {
+                    sequencer.advance_to(now);
+                }
+                // PlayerSequencer uses its own multi generator sink and uses the noop as fallback only
+                let mut noop = pattrns::player::phonic::generators::SequencerNoopEventSink;
+                sequencer.run_until(now + preload_samples, &mut noop);
+                self.last_sequencer_run_time = now + preload_samples;
+                // Handle runtime errors from Lua callbacks
                 if let Some(err) = pattrns::bindings::has_lua_callback_errors() {
                     self.update_script_error(&err.to_string());
                     pattrns::bindings::clear_lua_callback_errors();
                 }
             }
-            self.emitted_sample_time += samples_to_emit;
         }
     }
 
@@ -668,22 +688,28 @@ impl Playground {
                 vec![PatternSlot::Pattern(Rc::clone(&pattern))]
             }
         };
-        // replace pattern and sequence
-        let mut sequence = Sequence::new(
-            self.time_base,
-            vec![Phrase::new(
-                self.time_base,
-                pattern_slots,
-                BeatTimeStep::Bar(4.0),
-            )],
-        );
-        self.player.prepare_run_until_time(
-            self.sequence.take().as_mut(),
-            &mut sequence,
-            self.output_start_sample_time,
-            self.emitted_sample_time,
-        );
-        self.sequence.replace(sequence);
+        // replace pattern and sequencer
+        let phrase = Phrase::new(self.time_base, pattern_slots, BeatTimeStep::Bar(4.0));
+        if let Some(sequencer) = &mut self.sequencer {
+            // Seamlessly continue: stop playing notes at the transition sample and advance the
+            // new phrase to the current playback position so the beat is uninterrupted.
+            sequencer.replace_phrase(phrase);
+        } else {
+            // Create a new sequencer
+            let mut sequencer = PlayerSequencer::new(
+                phrase,
+                self.player.new_note_action(),
+                self.player.sample_root_note(),
+                self.player.sample_rate(),
+            );
+            if let Some(handle) = &self.current_generator_handle {
+                sequencer.set_generator(0, Some(handle.clone()));
+            }
+            let start_time = self.player.inner().output_sample_frame_position();
+            sequencer.reset(start_time);
+            self.last_sequencer_run_time = start_time;
+            self.sequencer.replace(sequencer);
+        }
         self.pattern.replace(pattern);
         // reset all update flags: we're fully up to date now.
         self.script_changed = false;
@@ -693,8 +719,8 @@ impl Playground {
     // Rebuild sequence time base from actual timer base
     fn rebuild_time_base(&mut self) {
         self.time_base_changed = false;
-        if let Some(sequence) = &mut self.sequence {
-            sequence.set_time_base(&self.time_base);
+        if let Some(sequencer) = &mut self.sequencer {
+            sequencer.phrase_mut().set_time_base(&self.time_base);
         }
     }
 
@@ -727,12 +753,11 @@ impl Playground {
 
     /// Access a pattern slot by index. pattern_index is used as MIDI note number.
     fn pattern_slot(&mut self, pattern_index: usize) -> Option<&mut PatternSlot> {
-        if let Some(sequence) = &mut self.sequence {
-            let phrase = sequence
-                .phrases_mut()
-                .first_mut()
-                .expect("Failed to access phrase");
-            phrase.pattern_slots_mut().get_mut(pattern_index)
+        if let Some(sequencer) = &mut self.sequencer {
+            sequencer
+                .phrase_mut()
+                .pattern_slots_mut()
+                .get_mut(pattern_index)
         } else {
             None
         }
