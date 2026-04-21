@@ -49,6 +49,10 @@ pub type PhraseEvent = (PatternIndex, PatternEvent);
 
 // -------------------------------------------------------------------------------------------------
 
+// SAFETY: Phrase is moved to the background player thread once and lives there for its
+// entire lifetime. The Rc<RefCell<>> internals are never accessed from multiple threads.
+unsafe impl Send for Phrase {}
+
 /// Combines multiple [`Pattern`]s into a new pattern stack.
 #[derive(Clone)]
 pub struct Phrase {
@@ -186,7 +190,7 @@ impl Phrase {
     }
 
     /// reset playback status and shift events to the given sample position.
-    /// Further take over patterns from the passed previously playing phrase for `PatternSlot::Continue` slots.   
+    /// Further take over patterns from the passed previously playing phrase for `PatternSlot::Continue` slots.
     pub fn reset_with_offset(&mut self, sample_offset: SampleTime, previous_phrase: &Phrase) {
         // reset pattern iters, unless they are in continue mode. in continue mode, copy the slot
         // from the previously playing phrase and adjust sample offsets to fit.

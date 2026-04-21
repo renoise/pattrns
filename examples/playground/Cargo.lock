@@ -599,7 +599,6 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "pattrns"
 version = "0.9.3"
 dependencies = [
- "dashmap",
  "derive_more",
  "lazy_static",
  "log",
@@ -660,8 +659,6 @@ dependencies = [
 [[package]]
 name = "phonic"
 version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "032428efeff86f8052a51388a86040ead56b1356c5c89b4086d0bc6d7bc061cf"
 dependencies = [
  "assume",
  "audio_thread_priority",

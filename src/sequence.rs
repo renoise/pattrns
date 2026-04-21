@@ -15,6 +15,10 @@ pub struct Sequence {
     sample_offset: SampleTime,
 }
 
+/// SAFETY: Sequence is moved to the background thread once and lives there for its
+/// entire lifetime. The Rc<RefCell<>> internals are never accessed from multiple threads.
+unsafe impl Send for Sequence {}
+
 impl Sequence {
     /// Create a new sequence from a vector of [`Phrase`]s.
     pub fn new(time_base: BeatTimeBase, phrases: Vec<Phrase>) -> Self {

@@ -268,7 +268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]));
 
     // arrange rhythms into phrases and sequence up these phrases to create a little arrangement
-    let mut sequence = Sequence::new(
+    let sequence = Sequence::new(
         beat_time,
         vec![
             Phrase::new(
@@ -332,15 +332,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     // play the sequence and dump events to stdout
-    let previous_sequence = None;
-    let reset_playback_pos = false;
-    player.run_until(
-        previous_sequence,
-        &mut sequence,
-        &beat_time,
-        reset_playback_pos,
-        || stop_running.load(Ordering::Relaxed),
-    );
+    let mut handle = player.play_sequence(sequence);
+    while !stop_running.load(Ordering::Relaxed) {
+        let sleep_duration = handle.run(player.inner().output_sample_frame_position());
+        std::thread::sleep(sleep_duration);
+    }
+    handle.stop();
 
     #[cfg(feature = "dhat-profiler")]
     drop(profiler);

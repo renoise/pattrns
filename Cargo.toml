@@ -36,13 +36,15 @@ mlua = { version = "^0.11", features = [
 ], optional = true }
 
 # optional -> player
-dashmap = { version = "^6.1", optional = true }
-phonic = { version = "^0.16", default-features = false, optional = true }
+# phonic = { version = "^0.17", default-features = false, optional = true }
+phonic = { path = "../phonic", default-features = false, optional = true }
 
 # dev dependencies
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 pretty_assertions = { version = "^1.4" }
-notify = { version = "^8.0", default-features = false, features = ["macos_fsevent"] }
+notify = { version = "^8.0", default-features = false, features = [
+    "macos_fsevent",
+] }
 ctrlc = { version = "^3.5" }
 criterion = { version = "^0.7", default-features = false }
 simplelog = { version = "^0.12", default-features = false, features = [
@@ -62,7 +64,7 @@ debug = "full"
 dhat-profiler = ["dep:dhat"]
 
 # enable example player implementation
-player = ["dep:dashmap", "dep:phonic"]
+player = ["dep:phonic"]
 # enable example player's fundsp synth support
 fundsp = ["phonic/fundsp"]
 # select example player's audio output driver
