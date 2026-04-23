@@ -387,7 +387,7 @@ impl LuaCallback {
     ) -> LuaResult<()> {
         self.set_context_playback_state(playback_state)?;
         self.set_context_time_base(time_base)?;
-        self.set_context_parameters(&parameters)?;
+        self.set_context_parameters(parameters)?;
         self.set_context_cycle_iteration(iteration)?;
         Ok(())
     }

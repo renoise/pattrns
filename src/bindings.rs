@@ -52,7 +52,7 @@ pub use callback::{
 pub(crate) use callback::{ContextPlaybackState, LuaCallback};
 pub(crate) use timeout::LuaTimeoutHook;
 pub(crate) use unwrap::{
-    assign_cycle_vars_from_table, gate_trigger_from_value, note_events_from_value, pulse_from_value,
+    gate_trigger_from_value, note_events_from_value, pulse_from_value, subcycle_values_from_table,
 };
 
 // ---------------------------------------------------------------------------------------------

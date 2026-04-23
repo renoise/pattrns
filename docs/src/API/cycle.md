@@ -275,7 +275,8 @@
 > Specifies how the cycle currently is running.
 
 ### iteration : [`integer`](../API/builtins/integer.md)<a name="iteration"></a>
-> how often the cycle has been run.
+> Iteration counter for the cycle that increases once per the whole cycle's output
+> Starts from 1 when the cycle starts running or after it got reset.
 
 ### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
 > Note that triggered the pattern, if any. Usually will ne a monophic note.

@@ -252,8 +252,6 @@ return pattern {
 }
 ```
 
-TODO add function example
-
 
 ## Advanced Examples
 

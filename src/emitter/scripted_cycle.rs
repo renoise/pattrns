@@ -6,7 +6,7 @@ use mlua::prelude::{LuaError, LuaResult, LuaValue};
 
 use crate::{
     bindings::{
-        add_lua_callback_error, assign_cycle_vars_from_table, note_events_from_value,
+        add_lua_callback_error, note_events_from_value, subcycle_values_from_table,
         ContextPlaybackState, LuaCallback, LuaTimeoutHook,
     },
     emitter::cycle::{apply_cycle_note_properties, CycleNoteEvents},
@@ -16,56 +16,19 @@ use crate::{
 
 // -------------------------------------------------------------------------------------------------
 
-/// Custom, user defined event mappings in cycles. Either a dynamic Lua function or static mapping table.
-/// By default an empty table (no mappings applied).
-#[derive(Debug)]
-pub(crate) enum ScriptedCycleMapping<V> {
+/// Custom, user defined event mappings or variables in cycles. Either a dynamic Lua callback
+/// or static hashmap of values.
+///
+/// By default an empty table (no custom mappings applied).
+#[derive(Debug, Clone)]
+pub(crate) enum ScriptedCycleMapping<V: Clone> {
     Table(HashMap<String, V>),
     Function(LuaCallback),
 }
 
-impl<V> Clone for ScriptedCycleMapping<V>
-where
-    V: Clone,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Self::Table(t) => Self::Table(t.clone()),
-            Self::Function(f) => Self::Function(f.clone()),
-        }
-    }
-}
-
-impl<V> Default for ScriptedCycleMapping<V> {
+impl<V: Clone> Default for ScriptedCycleMapping<V> {
     fn default() -> Self {
         Self::Table(HashMap::default())
-    }
-}
-
-impl<V> ScriptedCycleMapping<V> {
-    #[allow(unused)]
-    pub fn map(&self) -> HashMap<String, V>
-    where
-        V: Clone,
-    {
-        match self {
-            Self::Table(map) => map.clone(),
-            Self::Function(_) => HashMap::new(),
-        }
-    }
-
-    pub fn callback(&self) -> Option<&LuaCallback> {
-        match self {
-            Self::Function(f) => Some(f),
-            Self::Table(_) => None,
-        }
-    }
-
-    pub fn callback_mut(&mut self) -> Option<&mut LuaCallback> {
-        match self {
-            Self::Function(f) => Some(f),
-            Self::Table(_) => None,
-        }
     }
 }
 
@@ -83,7 +46,7 @@ pub struct ScriptedCycleEmitter {
     cycle: Cycle,
     parameters: Vec<(Rc<RefCell<Parameter>>, Vec<CycleSubCycle>)>,
     mappings: ScriptedCycleMapping<Vec<Option<NoteEvent>>>,
-    variable_callback: Option<LuaCallback>,
+    variables: ScriptedCycleMapping<CycleSubCycle>,
     timeout_hook: Option<LuaTimeoutHook>,
     channel_steps: Vec<usize>,
 }
@@ -95,14 +58,30 @@ impl ScriptedCycleEmitter {
             cycle,
             parameters: vec![],
             mappings: ScriptedCycleMapping::default(),
-            variable_callback: None,
+            variables: ScriptedCycleMapping::default(),
             timeout_hook: None,
             channel_steps: vec![],
         }
     }
 
+    /// Return a new cycle with the given static variables table.
+    pub(crate) fn with_variables(self, variables: HashMap<String, CycleSubCycle>) -> Self {
+        // apply variables to cycle
+        let mut cycle = self.cycle;
+        for (name, subcycle) in variables.iter() {
+            cycle.set_var(name, subcycle.clone());
+        }
+        // return a new emitter from the modified cycle and variables
+        let variables = ScriptedCycleMapping::Table(variables);
+        Self {
+            cycle,
+            variables,
+            ..self
+        }
+    }
+
     /// Return a new cycle with the given variable callback.
-    pub(crate) fn with_variable_callback(
+    pub(crate) fn with_variables_callback(
         self,
         variables_callback: LuaCallback,
         timeout_hook: &LuaTimeoutHook,
@@ -111,24 +90,31 @@ impl ScriptedCycleEmitter {
         // create a new timeout_hook instance and reset it before calling the function
         let mut timeout_hook = timeout_hook.clone();
         timeout_hook.reset();
+        let timeout_hook = Some(timeout_hook);
         // initialize emitter context for the function
         let playback_state = ContextPlaybackState::Running;
         let iteration = 0;
-        let mut variable_callback = variables_callback;
-        variable_callback.set_cycle_var_context(
+        let mut variables_callback = variables_callback;
+        variables_callback.set_cycle_var_context(
             playback_state,
             time_base,
             &self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
             iteration,
         )?;
+        // clear existing variables in cycle
+        let mut cycle = self.cycle;
+        cycle.clear_vars();
+        // return a new emitter from the modified cycle and variables
+        let variables = ScriptedCycleMapping::Function(variables_callback);
         Ok(Self {
-            variable_callback: Some(variable_callback),
-            timeout_hook: Some(timeout_hook),
+            cycle,
+            variables,
+            timeout_hook,
             ..self
         })
     }
 
-    /// Return a new cycle with the given value mapping table.
+    /// Return a new cycle with the given static mapping table.
     pub(crate) fn with_mappings(self, mappings: HashMap<String, Vec<Option<NoteEvent>>>) -> Self {
         let mappings = ScriptedCycleMapping::Table(mappings);
         Self { mappings, ..self }
@@ -143,7 +129,7 @@ impl ScriptedCycleEmitter {
     ) -> LuaResult<Self> {
         let mut timeout_hook = timeout_hook.clone();
         timeout_hook.reset();
-        let parameters = vec![];
+        let timeout_hook = Some(timeout_hook);
         // initialize emitter context for the function
         let playback_state = ContextPlaybackState::Running;
         let channel = 0;
@@ -161,8 +147,7 @@ impl ScriptedCycleEmitter {
         let channel_steps = vec![];
         Ok(Self {
             mappings,
-            timeout_hook: Some(timeout_hook),
-            parameters,
+            timeout_hook,
             channel_steps,
             ..self
         })
@@ -189,8 +174,8 @@ impl ScriptedCycleEmitter {
                     let result = mapping_callback.call_with_arg(event.as_str().as_ref())?;
                     note_events_from_value(&result, None)?
                 }
-                ScriptedCycleMapping::Table(mappings) => {
-                    if let Some(note_events) = mappings.get(event.as_str().as_ref()) {
+                ScriptedCycleMapping::Table(map) => {
+                    if let Some(note_events) = map.get(event.as_str().as_ref()) {
                         // apply custom note mapping
                         note_events.clone()
                     } else {
@@ -202,7 +187,7 @@ impl ScriptedCycleEmitter {
         };
         // verify that all identifiers are mapped
         if (note_events.is_empty() || note_events.iter().all(|f| f.is_none()))
-            && self.mappings.callback().is_none()
+            && !matches!(self.mappings, ScriptedCycleMapping::Function(_))
             && !matches!(event.value(), CycleValue::Rest | CycleValue::Hold)
         {
             return Err(LuaError::runtime(format!(
@@ -220,54 +205,16 @@ impl ScriptedCycleEmitter {
     /// Generate next batch of events from the next cycle run.
     /// Converts cycle events to note events and flattens channels into note columns.
     fn generate(&mut self) -> Vec<EmitterEvent> {
-        // inject parameter values into cycle as variables
-        for (parameter_ref, enum_values) in &self.parameters {
-            let parameter = parameter_ref.borrow();
-            self.cycle
-                .set_var(parameter.id(), parameter.into_var(enum_values));
-        }
-
         // reset timeouts for mapping or variable callbacks
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();
         }
 
-        // run var callback
-        if let Some(variables_callback) = &mut self.variable_callback {
-            // update context
-            if let Err(err) = variables_callback
-                .set_context_playback_state(ContextPlaybackState::Running)
-                .and(variables_callback.set_context_parameters(
-                    &self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
-                ))
-                .and(variables_callback.set_context_cycle_iteration(self.cycle.iteration()))
-            {
-                variables_callback.handle_error(&err);
-            }
-            // run
-            match variables_callback.call() {
-                Err(err) => {
-                    variables_callback.handle_error(&err);
-                }
-                Ok(value) => match value {
-                    LuaValue::Table(table) => {
-                        if let Err(err) = assign_cycle_vars_from_table(&mut self.cycle, table) {
-                            add_lua_callback_error(None, None, "vars".to_string(), err);
-                        }
-                    }
-                    _ => {
-                        add_lua_callback_error(
-                            None,
-                            None,
-                            "vars".to_string(),
-                            LuaError::RuntimeError(
-                                "vars should return a table of variables".to_string(),
-                            ),
-                        );
-                    }
-                },
-            }
-        }
+        // inject parameter values into cycle as variables
+        self.apply_parameter_variables();
+
+        // inject var callback values into cycle, if present
+        self.apply_variables_callback();
 
         // run the cycle event generator
         let events = {
@@ -289,7 +236,7 @@ impl ScriptedCycleEmitter {
         };
 
         // set mapping callback playback state
-        if let Some(callback) = self.mappings.callback_mut() {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
             if let Err(err) = callback.set_context_playback_state(ContextPlaybackState::Running) {
                 callback.handle_error(&err);
             }
@@ -311,7 +258,7 @@ impl ScriptedCycleEmitter {
                 let step_length = length.to_f64().unwrap_or(0.0);
                 match self.cycle_to_note_event(channel_index, channel_step, step_length, event) {
                     Err(err) => {
-                        if let Some(callback) = self.mappings.callback() {
+                        if let ScriptedCycleMapping::Function(callback) = &self.mappings {
                             callback.handle_error(&err)
                         } else {
                             let source = self.cycle.source().clone();
@@ -335,14 +282,13 @@ impl ScriptedCycleEmitter {
     /// Skip next batch of events from the cycle.
     /// This maintains cycle mapping callback states as well, if needed.
     fn advance(&mut self) {
-        let has_stateful_callbacks = self
-            .variable_callback
-            .as_ref()
-            .is_some_and(|f| f.is_stateful().unwrap_or(true))
-            || self
-                .mappings
-                .callback()
-                .is_some_and(|f| f.is_stateful().unwrap_or(true));
+        let has_stateful_callbacks = match &self.variables {
+            ScriptedCycleMapping::Function(f) => f.is_stateful().unwrap_or(true),
+            ScriptedCycleMapping::Table(_) => false,
+        } || match &self.mappings {
+            ScriptedCycleMapping::Function(f) => f.is_stateful().unwrap_or(true),
+            ScriptedCycleMapping::Table(_) => false,
+        };
 
         if !has_stateful_callbacks {
             // can simply advance the cycle
@@ -357,48 +303,10 @@ impl ScriptedCycleEmitter {
         }
 
         // inject parameter values into cycle as variables
-        for (parameter_ref, enum_values) in &self.parameters {
-            let parameter = parameter_ref.borrow();
-            self.cycle
-                .set_var(parameter.id(), parameter.into_var(enum_values));
-        }
+        self.apply_parameter_variables();
 
-        // invoke variables callback
-        if let Some(variables_callback) = &mut self.variable_callback {
-            // update context
-            if let Err(err) = variables_callback
-                .set_context_playback_state(ContextPlaybackState::Running)
-                .and(variables_callback.set_context_parameters(
-                    &self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
-                ))
-                .and(variables_callback.set_context_cycle_iteration(self.cycle.iteration()))
-            {
-                variables_callback.handle_error(&err);
-            }
-            // run
-            match variables_callback.call() {
-                Err(err) => {
-                    variables_callback.handle_error(&err);
-                }
-                Ok(value) => match value {
-                    LuaValue::Table(table) => {
-                        if let Err(err) = assign_cycle_vars_from_table(&mut self.cycle, table) {
-                            add_lua_callback_error(None, None, "vars".to_string(), err);
-                        }
-                    }
-                    _ => {
-                        add_lua_callback_error(
-                            None,
-                            None,
-                            "vars".to_string(),
-                            LuaError::RuntimeError(
-                                "vars should return a table of variables".to_string(),
-                            ),
-                        );
-                    }
-                },
-            }
-        }
+        // inject var callback values into cycle, if present
+        self.apply_variables_callback();
 
         // run the cycle event generator
         let events = {
@@ -477,19 +385,83 @@ impl ScriptedCycleEmitter {
             }
         }
     }
+
+    fn apply_parameter_variables(&mut self) {
+        if let ScriptedCycleMapping::Table(map) = &self.variables {
+            for (parameter_ref, enum_values) in &self.parameters {
+                let parameter = parameter_ref.borrow();
+                // var overrides parameter variables, so skip this parameter
+                if !map.contains_key(parameter.id()) {
+                    self.cycle
+                        .set_var(parameter.id(), parameter.into_var(enum_values));
+                }
+            }
+        } else {
+            for (parameter_ref, enum_values) in &self.parameters {
+                let parameter = parameter_ref.borrow();
+                self.cycle
+                    .set_var(parameter.id(), parameter.into_var(enum_values));
+            }
+        }
+    }
+
+    fn apply_variables_callback(&mut self) {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
+            // update context
+            if let Err(err) = callback
+                .set_context_playback_state(ContextPlaybackState::Running)
+                .and(callback.set_context_parameters(
+                    &self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
+                ))
+                .and(callback.set_context_cycle_iteration(self.cycle.iteration()))
+            {
+                callback.handle_error(&err);
+            }
+            // run
+            match callback.call() {
+                Err(err) => {
+                    callback.handle_error(&err);
+                }
+                Ok(value) => match value {
+                    LuaValue::Table(table) => match subcycle_values_from_table(table) {
+                        Ok(variables) => {
+                            for (k, v) in variables.into_iter() {
+                                self.cycle.set_var(&k, v);
+                            }
+                        }
+                        Err(err) => {
+                            add_lua_callback_error(None, None, "vars".to_string(), err);
+                        }
+                    },
+                    _ => {
+                        add_lua_callback_error(
+                            None,
+                            None,
+                            "vars".to_string(),
+                            LuaError::RuntimeError(
+                                "vars should return a table of variables".to_string(),
+                            ),
+                        );
+                    }
+                },
+            }
+        }
+    }
 }
 
 impl Emitter for ScriptedCycleEmitter {
     fn set_time_base(&mut self, time_base: &BeatTimeBase) {
+        // reset timeouts for callbacks
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();
         }
-        if let Some(callback) = &mut self.variable_callback {
+        // pass time base to callbacks
+        if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
             if let Err(err) = callback.set_context_time_base(time_base) {
                 callback.handle_error(&err);
             }
         }
-        if let Some(callback) = self.mappings.callback_mut() {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
             if let Err(err) = callback.set_context_time_base(time_base) {
                 callback.handle_error(&err);
             }
@@ -497,15 +469,17 @@ impl Emitter for ScriptedCycleEmitter {
     }
 
     fn set_trigger_event(&mut self, event: &Event) {
+        // reset timeouts for callbacks
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();
         }
-        if let Some(callback) = &mut self.variable_callback {
+        // pass event to callbacks
+        if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
             if let Err(err) = callback.set_context_trigger_event(event) {
                 callback.handle_error(&err);
             }
         }
-        if let Some(callback) = self.mappings.callback_mut() {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
             if let Err(err) = callback.set_context_trigger_event(event) {
                 callback.handle_error(&err);
             }
@@ -517,6 +491,7 @@ impl Emitter for ScriptedCycleEmitter {
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();
         }
+
         // parse and unwrap cycle subcycle values from enum parameters
         let unwrap_sub_cycle_result = |sub_cycle: Result<CycleSubCycle, String>| -> CycleSubCycle {
             sub_cycle.unwrap_or_else(|err| {
@@ -531,7 +506,6 @@ impl Emitter for ScriptedCycleEmitter {
                 CycleSubCycle::rest()
             })
         };
-        // memorize parameters
         self.parameters = parameters
             .iter()
             .map(|parameter| {
@@ -546,14 +520,16 @@ impl Emitter for ScriptedCycleEmitter {
                 )
             })
             .collect();
+
         // pass parameters to the variables callback context
-        if let Some(callback) = &mut self.variable_callback {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
             if let Err(err) = callback.set_context_parameters(&parameters) {
                 callback.handle_error(&err);
             }
         }
+
         // pass parameters to the mapping callback context
-        if let Some(callback) = self.mappings.callback_mut() {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
             if let Err(err) = callback.set_context_parameters(&parameters) {
                 callback.handle_error(&err);
             }
@@ -581,12 +557,14 @@ impl Emitter for ScriptedCycleEmitter {
     fn reset(&mut self) {
         // reset cycle
         self.cycle.reset();
+
         // reset timeouts for callbacks
         if let Some(timeout_hook) = &mut self.timeout_hook {
             timeout_hook.reset();
         }
+
         // reset callbacks
-        if let Some(callback) = &mut self.variable_callback {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
             // reset iteration counter
             let iteration = 0;
             if let Err(err) = callback.set_context_cycle_iteration(iteration) {
@@ -597,7 +575,7 @@ impl Emitter for ScriptedCycleEmitter {
                 callback.handle_error(&err);
             }
         }
-        if let Some(callback) = self.mappings.callback_mut() {
+        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
             // reset step counter
             let channel = 0;
             let step = 0;

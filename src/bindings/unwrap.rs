@@ -1,6 +1,6 @@
 //! Various lua->rust conversion helpers
 
-use std::{cell::RefCell, ops::RangeBounds, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, ops::RangeBounds, rc::Rc, sync::Arc};
 
 use mlua::prelude::*;
 
@@ -1065,12 +1065,17 @@ fn subcycle_from_value(arg: &LuaValue) -> LuaResult<CycleSubCycle> {
     subcycle_result.map_err(|err| cycle_to_lua_error(arg, err))
 }
 
-pub(crate) fn assign_cycle_vars_from_table(cycle: &mut Cycle, table: LuaTable) -> LuaResult<()> {
+pub(crate) fn subcycle_values_from_table(
+    table: LuaTable,
+) -> LuaResult<HashMap<String, CycleSubCycle>> {
+    let mut map = HashMap::with_capacity(table.raw_len());
     for (k, v) in table.pairs::<LuaValue, LuaValue>().flatten() {
-        cycle.set_var(&k.to_string()?, subcycle_from_value(&v)?)
+        map.insert(k.to_string()?, subcycle_from_value(&v)?);
     }
-    Ok(())
+    Ok(map)
 }
+
+// -------------------------------------------------------------------------------------------------
 
 pub(crate) fn emitter_from_value(
     lua: &Lua,
@@ -1089,19 +1094,16 @@ pub(crate) fn emitter_from_value(
             } else if userdata.is::<CycleUserData>() {
                 // NB: take instead of cloning: cycle userdata has no other usage than being defined
                 let userdata = userdata.take::<CycleUserData>()?;
-                let cycle = userdata.cycle;
-                // with variables
-                let emitter = if let Some(func) = userdata.variables_function {
-                    ScriptedCycleEmitter::new(cycle.clone()).with_variable_callback(
-                        LuaCallback::new(lua, func)?,
-                        timeout_hook,
-                        time_base,
-                    )?
-                } else {
-                    ScriptedCycleEmitter::new(cycle.clone())
-                };
-                // with mappings
-                let emitter = match userdata.mapping {
+                let emitter = ScriptedCycleEmitter::new(userdata.cycle);
+                // apply variables
+                let emitter =
+                    match userdata.variables {
+                        ScriptedCycleMapping::Table(map) => emitter.with_variables(map),
+                        ScriptedCycleMapping::Function(callback) => emitter
+                            .with_variables_callback(callback.clone(), timeout_hook, time_base)?,
+                    };
+                // apply mappings
+                let emitter = match userdata.mappings {
                     ScriptedCycleMapping::Table(map) => emitter.with_mappings(map),
                     ScriptedCycleMapping::Function(callback) => {
                         emitter.with_mapping_callback(callback, timeout_hook, time_base)?
