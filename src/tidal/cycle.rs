@@ -153,6 +153,14 @@ impl Cycle {
         }
     }
 
+    /// Get a custom cycle variable, as set with `set_var`.
+    pub fn get_var(&self, name: &str) -> Option<SubCycle> {
+        self.vars
+            .as_ref()
+            .and_then(|vars| vars.get(name).cloned().map(SubCycle::new))
+    }
+
+    /// Set or update a custom cycle variable.
     pub fn set_var(&mut self, name: &str, subcycle: SubCycle) {
         if let Some(vars) = self.vars.as_mut() {
             vars.insert(name.into(), subcycle.step);
@@ -161,6 +169,16 @@ impl Cycle {
             vars.insert(name.into(), subcycle.step);
             self.vars = Some(vars);
         }
+    }
+
+    /// Clear all custom cycle variables.
+    pub fn clear_vars(&mut self) {
+        self.vars = None
+    }
+
+    // How many times did the cycle run?
+    pub fn iteration(&self) -> u32 {
+        self.state.iteration
     }
 
     /// Check if a cycle may give different outputs between cycles.

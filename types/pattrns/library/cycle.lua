@@ -20,6 +20,15 @@ error("Do not try to execute this file. It's just a type definition file.")
 ---step length fraction within the cycle, where 1 is the total duration of a single cycle run.
 ---@field step_length number
 
+---Context passed to 'cycle:var` functions.
+---@class CycleVarContext : TimeContext
+---
+---Specifies how the cycle currently is running.
+---@field playback PlaybackState
+---Iteration counter for the cycle that increases once per the whole cycle's output
+---Starts from 1 when the cycle starts running or after it got reset.
+---@field iteration integer
+
 ----------------------------------------------------------------------------------------------------
 
 ---@class Cycle
@@ -28,6 +37,7 @@ local Cycle = {}
 ----------------------------------------------------------------------------------------------------
 
 ---@alias CycleMapNoteValue NoteValue|(NoteValue[])|Note
+---@alias CycleMapTable { [string]: CycleMapNoteValue }
 ---@alias CycleMapFunction fun(context: CycleMapContext, value: string):CycleMapNoteValue
 ---@alias CycleMapGenerator fun(context: CycleMapContext, value: string):CycleMapFunction
 
@@ -80,10 +90,34 @@ local Cycle = {}
 ---  end
 ---end)
 ---```
----@param map { [string]: CycleMapNoteValue }|CycleMapFunction|CycleMapGenerator
+---@param map CycleMapTable|CycleMapFunction|CycleMapGenerator
 ---@return Cycle
 ---@nodiscard
 function Cycle:map(map) end
+
+---@alias CycleVarValue string|number|integer|boolean
+---@alias CycleVarTable {[string]: CycleVarValue}
+---@alias CycleVarFunction fun(context: CycleVarContext):CycleVarTable
+---@alias CycleVarGenerator fun(context: CycleVarContext):CycleVarFunction
+
+---Assign variables to be used inside the main cycle script via `$name` notation
+---
+---By default any parameter you define will be available to the cycle as a variable
+---but you can override and declare additional variables by passing in a table of them
+---or passing a function that returns such a table.
+---
+---### examples:
+---```lua
+-----Using a static table
+---cycle("$a $a $b $a $b $b"):var({
+---  a = "c a f e"
+---  b = "e f a c"
+---})
+---```
+---@param variables CycleVarTable|CycleVarFunction|CycleVarGenerator
+---@return Cycle
+---@nodiscard
+function Cycle:var(variables) end
 
 ----------------------------------------------------------------------------------------------------
 
@@ -91,7 +125,7 @@ function Cycle:map(map) end
 ---
 ---`cycle` accepts a mini-notation as used by Tidal Cycles, with the following differences:
 ---* Stacks and random choices are valid without brackets (`a | b` is parsed as `[a | b]`)
----* `:` sets the instrument or remappable target instead of selecting samples but also 
+---* `:` sets the instrument or remappable target instead of selecting samples but also
 ---  allows setting note attributes such as instrument/volume/pan/delay (e.g. `c4:v0.1:p0.5`)
 ---* In bjorklund expressions, operators *within* and on the *right side* are not supported
 ---  (e.g. `bd(<3 2>, 8)` and `bd(3, 8)*2` are *not* supported)
