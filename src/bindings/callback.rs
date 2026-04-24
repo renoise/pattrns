@@ -251,10 +251,10 @@ impl LuaCallback {
     }
 
     /// Sets parameter context for the callback.
-    pub fn set_context_parameters(&mut self, parameters: ParameterSet) -> LuaResult<()> {
+    pub fn set_context_parameters(&mut self, parameters: &ParameterSet) -> LuaResult<()> {
         let inputs_context = &mut self.context.borrow_mut::<CallbackContext>()?.inputs_context;
         let mut parameters_map = HashMap::new();
-        for parameter in &parameters {
+        for parameter in parameters {
             let parameter = Rc::clone(parameter);
             let parameter_id = parameter.borrow().id().as_bytes().to_vec();
             parameters_map.insert(parameter_id, parameter);
@@ -309,8 +309,15 @@ impl LuaCallback {
     ) -> LuaResult<()> {
         let values = &mut self.context.borrow_mut::<CallbackContext>()?.values;
         values.insert(b"channel", (channel + 1).into());
-        values.insert(b"step", (step + 1).into());
+        values.insert(b"step", step.wrapping_add(1).into());
         values.insert(b"step_length", step_length.into());
+        Ok(())
+    }
+
+    /// Sets the cycle context iteration value for the callback.
+    pub fn set_context_cycle_iteration(&mut self, iteration: u32) -> LuaResult<()> {
+        let values = &mut self.context.borrow_mut::<CallbackContext>()?.values;
+        values.insert(b"iteration", iteration.wrapping_add(1).into());
         Ok(())
     }
 
@@ -355,8 +362,8 @@ impl LuaCallback {
         Ok(())
     }
 
-    /// Sets the cycle context for the callback.
-    pub fn set_cycle_context(
+    /// Sets the cycle context for the mapping callbacks.
+    pub fn set_cycle_map_context(
         &mut self,
         playback_state: ContextPlaybackState,
         time_base: &BeatTimeBase,
@@ -367,6 +374,21 @@ impl LuaCallback {
         self.set_context_playback_state(playback_state)?;
         self.set_context_time_base(time_base)?;
         self.set_context_cycle_step(channel, step, step_length)?;
+        Ok(())
+    }
+
+    /// Sets the cycle context for var callbacks.
+    pub fn set_cycle_var_context(
+        &mut self,
+        playback_state: ContextPlaybackState,
+        time_base: &BeatTimeBase,
+        parameters: &ParameterSet,
+        iteration: u32,
+    ) -> LuaResult<()> {
+        self.set_context_playback_state(playback_state)?;
+        self.set_context_time_base(time_base)?;
+        self.set_context_parameters(parameters)?;
+        self.set_context_cycle_iteration(iteration)?;
         Ok(())
     }
 

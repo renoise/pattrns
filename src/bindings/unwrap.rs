@@ -1,6 +1,6 @@
 //! Various lua->rust conversion helpers
 
-use std::{cell::RefCell, ops::RangeBounds, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, ops::RangeBounds, rc::Rc, sync::Arc};
 
 use mlua::prelude::*;
 
@@ -9,7 +9,9 @@ use crate::{
         callback::LuaCallback, cycle::CycleUserData, note::NoteUserData,
         parameter::ParameterUserData, sequence::SequenceUserData, LuaTimeoutHook,
     },
+    emitter::scripted_cycle::ScriptedCycleMapping,
     prelude::*,
+    CycleSubCycle,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1031,6 +1033,50 @@ pub(crate) fn gate_from_value(
 
 // -------------------------------------------------------------------------------------------------
 
+fn subcycle_from_value(arg: &LuaValue) -> LuaResult<CycleSubCycle> {
+    fn cycle_to_lua_error(arg: &LuaValue, string: String) -> LuaError {
+        LuaError::FromLuaConversionError {
+            from: arg.type_name(),
+            to: "cycle variable".to_string(),
+            message: Some(string),
+        }
+    }
+
+    let subcycle_result = match arg {
+        LuaValue::Integer(x) => {
+            Ok(CycleSubCycle::integer((*x).try_into().map_err(|err| {
+                cycle_to_lua_error(arg, format!("{err}"))
+            })?))
+        }
+        LuaValue::Number(x) => Ok(CycleSubCycle::float(*x)),
+        LuaValue::String(x) => CycleSubCycle::from(&x.to_str()?),
+        LuaValue::Boolean(x) => Ok(CycleSubCycle::integer(if *x { 1 } else { 0 })),
+        LuaValue::Nil => Ok(CycleSubCycle::rest()),
+        // TODO convert from note table presentation to cycle note?
+        _ => {
+            return Err(LuaError::FromLuaConversionError {
+                from: arg.type_name(),
+                to: "cycle variable".to_string(),
+                message: Some("type couldn't be converted to a sub cycle".to_string()),
+            })
+        }
+    };
+
+    subcycle_result.map_err(|err| cycle_to_lua_error(arg, err))
+}
+
+pub(crate) fn subcycle_values_from_table(
+    table: LuaTable,
+) -> LuaResult<HashMap<String, CycleSubCycle>> {
+    let mut map = HashMap::with_capacity(table.raw_len());
+    for (k, v) in table.pairs::<LuaValue, LuaValue>().flatten() {
+        map.insert(k.to_string()?, subcycle_from_value(&v)?);
+    }
+    Ok(map)
+}
+
+// -------------------------------------------------------------------------------------------------
+
 pub(crate) fn emitter_from_value(
     lua: &Lua,
     timeout_hook: &LuaTimeoutHook,
@@ -1048,21 +1094,22 @@ pub(crate) fn emitter_from_value(
             } else if userdata.is::<CycleUserData>() {
                 // NB: take instead of cloning: cycle userdata has no other usage than being defined
                 let userdata = userdata.take::<CycleUserData>()?;
-                let cycle = userdata.cycle;
-                if let Some(mapping_function) = userdata.mapping_function {
-                    let mapping_callback = LuaCallback::new(lua, mapping_function)?;
-                    let emitter = ScriptedCycleEmitter::with_mapping_callback(
-                        cycle,
-                        timeout_hook,
-                        mapping_callback,
-                        time_base,
-                    )?;
-                    Ok(Box::new(emitter))
-                } else {
-                    let mappings = userdata.mappings;
-                    let emitter = ScriptedCycleEmitter::with_mappings(cycle, mappings);
-                    Ok(Box::new(emitter))
-                }
+                let emitter = ScriptedCycleEmitter::new(userdata.cycle);
+                // apply variables
+                let emitter =
+                    match userdata.variables {
+                        ScriptedCycleMapping::Table(map) => emitter.with_variables(map),
+                        ScriptedCycleMapping::Function(callback) => emitter
+                            .with_variables_callback(callback.clone(), timeout_hook, time_base)?,
+                    };
+                // apply mappings
+                let emitter = match userdata.mappings {
+                    ScriptedCycleMapping::Table(map) => emitter.with_mappings(map),
+                    ScriptedCycleMapping::Function(callback) => {
+                        emitter.with_mapping_callback(callback, timeout_hook, time_base)?
+                    }
+                };
+                Ok(Box::new(emitter))
             } else {
                 Err(LuaError::FromLuaConversionError {
                     from: "userdata",

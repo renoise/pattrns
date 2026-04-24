@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+
 use mlua::prelude::*;
 
-use crate::{event::NoteEvent, tidal::Cycle};
+use crate::{
+    bindings::LuaCallback, emitter::scripted_cycle::ScriptedCycleMapping, event::NoteEvent, Cycle,
+    CycleSubCycle,
+};
 
-use super::unwrap::{bad_argument_error, note_events_from_value};
+use super::unwrap::{bad_argument_error, note_events_from_value, subcycle_values_from_table};
 
 // ---------------------------------------------------------------------------------------------
 
@@ -10,8 +15,8 @@ use super::unwrap::{bad_argument_error, note_events_from_value};
 #[derive(Clone, Debug)]
 pub struct CycleUserData {
     pub cycle: Cycle,
-    pub mappings: Vec<(String, Vec<Option<NoteEvent>>)>,
-    pub mapping_function: Option<LuaFunction>,
+    pub mappings: ScriptedCycleMapping<Vec<Option<NoteEvent>>>,
+    pub variables: ScriptedCycleMapping<CycleSubCycle>,
 }
 
 impl CycleUserData {
@@ -23,41 +28,31 @@ impl CycleUserData {
         if let Some(seed) = seed {
             cycle = cycle.with_seed(seed);
         }
-
-        let mappings = Vec::new();
-        let mapping_function = None;
+        let mapping = ScriptedCycleMapping::default();
+        let variables = ScriptedCycleMapping::default();
         Ok(CycleUserData {
             cycle,
-            mappings,
-            mapping_function,
+            mappings: mapping,
+            variables,
         })
     }
 }
 
 impl LuaUserData for CycleUserData {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut("map", |_lua, this, value: LuaValue| match value {
-            LuaValue::Function(func) => {
-                let cycle = this.cycle.clone();
-                let mappings = Vec::new();
-                let mapping_function = Some(func);
-                Ok(CycleUserData {
-                    cycle,
-                    mappings,
-                    mapping_function,
-                })
-            }
+        methods.add_method_mut("map", |lua, this, value: LuaValue| match value {
+            LuaValue::Function(func) => Ok(Self {
+                mappings: ScriptedCycleMapping::Function(LuaCallback::new(lua, func)?),
+                ..this.clone()
+            }),
             LuaValue::Table(table) => {
-                let cycle = this.cycle.clone();
-                let mut mappings = Vec::new();
+                let mut mappings = HashMap::with_capacity(table.raw_len());
                 for (k, v) in table.pairs::<LuaValue, LuaValue>().flatten() {
-                    mappings.push((k.to_string()?, note_events_from_value(&v, None)?));
+                    mappings.insert(k.to_string()?, note_events_from_value(&v, None)?);
                 }
-                let mapping_function = None;
-                Ok(CycleUserData {
-                    cycle,
-                    mappings,
-                    mapping_function,
+                Ok(Self {
+                    mappings: ScriptedCycleMapping::Table(mappings),
+                    ..this.clone()
                 })
             }
             _ => Err(bad_argument_error(
@@ -71,6 +66,27 @@ impl LuaUserData for CycleUserData {
                 .as_str(),
             )),
         });
+
+        methods.add_method_mut("var", |lua, this, value: LuaValue| match value {
+            LuaValue::Table(table) => Ok(Self {
+                variables: ScriptedCycleMapping::Table(subcycle_values_from_table(table)?),
+                ..this.clone()
+            }),
+            LuaValue::Function(func) => Ok(Self {
+                variables: ScriptedCycleMapping::Function(LuaCallback::new(lua, func)?),
+                ..this.clone()
+            }),
+            _ => Err(bad_argument_error(
+                None,
+                "var",
+                1,
+                format!(
+                    "var argument must be a table or a function but is a '{}'",
+                    value.type_name()
+                )
+                .as_str(),
+            )),
+        });
     }
 }
 
@@ -78,14 +94,10 @@ impl LuaUserData for CycleUserData {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use super::*;
 
     use crate::{
-        bindings::*,
-        emitter::{cycle::CycleEmitter, scripted_cycle::ScriptedCycleEmitter},
-        event::new_note,
+        bindings::*, emitter::scripted_cycle::ScriptedCycleEmitter, event::new_note, CycleSubCycle,
         Emitter, Event, Note, RhythmEvent,
     };
 
@@ -126,19 +138,91 @@ mod test {
     }
 
     #[test]
+    fn variables() -> LuaResult<()> {
+        let (lua, _) = new_test_engine()?;
+
+        let cycle_userdata = evaluate_cycle_userdata(
+            &lua,
+            r#"cycle("a b c"):var({x = "c0", y = "b4:v0.5", z = "[a b c]"})"#,
+        )?;
+        let variables_table = match &cycle_userdata.variables {
+            ScriptedCycleMapping::Table(map) => map,
+            ScriptedCycleMapping::Function(_) => panic!("Expected a variables table here"),
+        };
+
+        assert!(!variables_table.contains_key("a"));
+        assert_eq!(
+            variables_table["x"],
+            CycleSubCycle::from("c0").expect("valid subcycle")
+        );
+        assert_eq!(
+            variables_table["y"],
+            CycleSubCycle::from("b4:v0.5").expect("valid subcycle")
+        );
+        assert!(variables_table.contains_key("z"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn variables_function() -> LuaResult<()> {
+        let time_base = BeatTimeBase {
+            beats_per_min: 120.0,
+            beats_per_bar: 4,
+            samples_per_sec: 44100,
+        };
+
+        let (lua, timeout_hook) = new_test_engine_with_timebase(&time_base)?;
+
+        let cycle_userdata = evaluate_cycle_userdata(
+            &lua,
+            r#"
+                cycle("a b c $x $y $z"):var(function(context)
+                    return {
+                        x = "d" .. context.iteration,
+                        y = "e",
+                        z = "f",
+                    }
+                end)"#,
+        )?;
+        let variables_callback = match &cycle_userdata.variables {
+            ScriptedCycleMapping::Function(f) => f.clone(),
+            ScriptedCycleMapping::Table(_) => panic!("Expected a variables callback here"),
+        };
+
+        let mut event_iter = ScriptedCycleEmitter::new(cycle_userdata.cycle)
+            .with_variables_callback(variables_callback, &timeout_hook, &time_base)?;
+        assert_eq!(
+            event_iter
+                .run(RhythmEvent::default(), true)
+                .map(|events| events.into_iter().map(|e| e.event).collect::<Vec<_>>()),
+            Some(vec![
+                Event::NoteEvents(vec![new_note(Note::A4)]),
+                Event::NoteEvents(vec![new_note(Note::B4)]),
+                Event::NoteEvents(vec![new_note(Note::C4)]),
+                Event::NoteEvents(vec![new_note(Note::D1)]),
+                Event::NoteEvents(vec![new_note(Note::E4)]),
+                Event::NoteEvents(vec![new_note(Note::F4)]),
+            ])
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn mappings() -> LuaResult<()> {
         let (lua, _) = new_test_engine()?;
 
-        let mapped_cycle = evaluate_cycle_userdata(
+        let cycle_userdata = evaluate_cycle_userdata(
             &lua,
             r#"cycle("a b c"):map({a = "c0", b = 48, c = { key = "c6" }})"#,
         )?;
+        let mappings_table = match &cycle_userdata.mappings {
+            ScriptedCycleMapping::Table(map) => map.clone(),
+            ScriptedCycleMapping::Function(_) => panic!("Expected a mapping table to be set here"),
+        };
         assert_eq!(
-            mapped_cycle
-                .mappings
-                .clone()
-                .into_iter()
-                .collect::<HashMap<_, _>>(),
+            mappings_table,
             HashMap::from([
                 ("a".to_string(), vec![new_note(Note::C0)]),
                 ("b".to_string(), vec![new_note(Note::C4)]),
@@ -148,7 +232,7 @@ mod test {
 
         // check if mappings are applied correctly
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            ScriptedCycleEmitter::new(cycle_userdata.cycle).with_mappings(mappings_table);
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -160,31 +244,20 @@ mod test {
             ])
         );
 
-        // check note properties
-        let mapped_cycle = evaluate_cycle_userdata(&lua, r#"cycle("a:1:g0.1:v0.1:p-1.0:d0.3")"#)?;
-        let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
-        assert_eq!(
-            event_iter
-                .run(RhythmEvent::default(), true)
-                .map(|events| events.into_iter().map(|e| e.event).collect::<Vec<_>>()),
-            Some(vec![Event::NoteEvents(vec![new_note((
-                Note::A4,
-                InstrumentId::from(1),
-                Some(0.1),
-                0.1,
-                -1.0,
-                0.3,
-            ))]),])
-        );
-
         // check instrument overrides
-        let mapped_cycle = evaluate_cycle_userdata(
+        let cycle_userdata = evaluate_cycle_userdata(
             &lua,
             r#"cycle("a:1 a:2 a"):map({ a = { key = 48, instrument = 66 } })"#,
         )?;
+        let mappings_table = match &cycle_userdata.mappings {
+            ScriptedCycleMapping::Table(map) => map.clone(),
+            ScriptedCycleMapping::Function(_) => {
+                panic!("Expected a mapping table to be set here")
+            }
+        };
+
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            ScriptedCycleEmitter::new(cycle_userdata.cycle).with_mappings(mappings_table);
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -197,12 +270,19 @@ mod test {
         );
 
         // check note property overrides
-        let mapped_cycle = evaluate_cycle_userdata(
+        let cycle_userdata = evaluate_cycle_userdata(
             &lua,
             r#"cycle("a:1:v.1 a"):map({ a = { key = 48, instrument = 66, volume = 1.0 } })"#,
         )?;
+        let mappings_table = match &cycle_userdata.mappings {
+            ScriptedCycleMapping::Table(map) => map.clone(),
+            ScriptedCycleMapping::Function(_) => {
+                panic!("Expected a mapping table to be set here")
+            }
+        };
+
         let mut event_iter =
-            CycleEmitter::new(mapped_cycle.cycle).with_mappings(&mapped_cycle.mappings);
+            ScriptedCycleEmitter::new(cycle_userdata.cycle).with_mappings(mappings_table);
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
@@ -231,7 +311,7 @@ mod test {
 
         let (lua, timeout_hook) = new_test_engine_with_timebase(&time_base)?;
 
-        let mapped_cycle = evaluate_cycle_userdata(
+        let cycle_userdata = evaluate_cycle_userdata(
             &lua,
             r#"
                 cycle("wurst a b c"):map(function(context, value)
@@ -245,14 +325,13 @@ mod test {
                     end
                 end)"#,
         )?;
-        let mapping_callback =
-            LuaCallback::new(&lua, mapped_cycle.mapping_function.unwrap().clone())?;
-        let mut event_iter = ScriptedCycleEmitter::with_mapping_callback(
-            mapped_cycle.cycle,
-            &timeout_hook,
-            mapping_callback,
-            &time_base,
-        )?;
+        let mappings_callback = match &cycle_userdata.mappings {
+            ScriptedCycleMapping::Function(f) => f.clone(),
+            ScriptedCycleMapping::Table(_) => panic!("Expected a mapping callback to be set here"),
+        };
+
+        let mut event_iter = ScriptedCycleEmitter::new(cycle_userdata.cycle)
+            .with_mapping_callback(mappings_callback, &timeout_hook, &time_base)?;
         assert_eq!(
             event_iter
                 .run(RhythmEvent::default(), true)
