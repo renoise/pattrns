@@ -230,7 +230,7 @@
 > step length fraction within the cycle, where 1 is the total duration of a single cycle run.
 
 ### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
-> Note that triggered the pattern, if any. Usually will ne a monophic note.
+> Note that triggered the pattern, if any. Usually will be a monophonic note.
 > To access the raw note number value use: `context.trigger.notes[1].key`
 
 ### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
@@ -279,7 +279,7 @@
 > Starts from 1 when the cycle starts running or after it got reset.
 
 ### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
-> Note that triggered the pattern, if any. Usually will ne a monophic note.
+> Note that triggered the pattern, if any. Usually will be a monophonic note.
 > To access the raw note number value use: `context.trigger.notes[1].key`
 
 ### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
