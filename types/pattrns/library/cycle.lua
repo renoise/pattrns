@@ -14,11 +14,16 @@ error("Do not try to execute this file. It's just a type definition file.")
 ---channel/voice index within the cycle. each channel in the cycle gets emitted and thus mapped
 ---separately, starting with the first channel index 1.
 ---@field channel integer
+---Iteration counter for the cycle that increases once per the whole cycle's output
+---Starts from 1 when the cycle starts running or after it got reset.
+---@field iteration integer
 ---Continues step counter for each channel, incrementing with each new mapped value in the cycle.
 ---Starts from 1 when the cycle starts running or after it got reset.
 ---@field step integer
 ---step length fraction within the cycle, where 1 is the total duration of a single cycle run.
 ---@field step_length number
+---step start fraction within the cycle, where 1 is the total duration of a single cycle run.
+---@field step_time number
 
 ---Context passed to 'cycle:var` functions.
 ---@class CycleVarContext : TimeContext

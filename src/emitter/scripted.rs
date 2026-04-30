@@ -111,27 +111,22 @@ impl Emitter for ScriptedEmitter {
         // reset timeout
         self.timeout_hook.reset();
         // update function context with the new time base
-        if let Err(err) = self.callback.set_context_time_base(time_base) {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.set_context_time_base(time_base));
     }
 
     fn set_trigger_event(&mut self, event: &Event) {
         // reset timeout
         self.timeout_hook.reset();
         // update function context from the new time base
-        if let Err(err) = self.callback.set_context_trigger_event(event) {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.set_context_trigger_event(event))
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
         // reset timeout
         self.timeout_hook.reset();
         // update function context with the new parameters
-        if let Err(err) = self.callback.set_context_parameters(&parameters) {
-            self.callback.handle_error(&err);
-        }
+        self.callback
+            .handle(|c| c.set_context_parameters(&parameters));
     }
 
     fn run(&mut self, pulse: RhythmEvent, emit_event: bool) -> Option<Vec<EmitterEvent>> {
@@ -176,22 +171,14 @@ impl Emitter for ScriptedEmitter {
         self.timeout_hook.reset();
         // reset step counter
         self.step = 0;
-        if let Err(err) = self.callback.set_context_step(self.step) {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.set_context_step(self.step));
         // reset pulse counter
         self.pulse_step = 0;
         self.pulse_time_step = 0.0;
-        if let Err(err) = self
-            .callback
-            .set_context_pulse_step(self.pulse_step, self.pulse_time_step)
-        {
-            self.callback.handle_error(&err);
-        }
+        self.callback
+            .handle(|c| c.set_context_pulse_step(self.pulse_step, self.pulse_time_step));
         // restore function
-        if let Err(err) = self.callback.reset() {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.reset());
         // reset last event
         self.note_event_state.clear();
     }
