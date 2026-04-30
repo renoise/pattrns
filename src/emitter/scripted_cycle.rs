@@ -210,14 +210,11 @@ impl ScriptedCycleEmitter {
 
         // set mapping callback playback state
         if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
-            if let Err(err) = callback.set_context_playback_state(ContextPlaybackState::Running) {
-                callback.handle_error(&err);
-            }
-            if let Err(err) = callback.set_context_cycle_iteration(self.cycle.iteration()) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| {
+                c.set_context_playback_state(ContextPlaybackState::Running)
+                    .and(c.set_context_cycle_iteration(self.cycle.iteration()))
+            });
         }
-
         // run the cycle event generator
         let events = {
             match self.cycle.generate() {
@@ -332,11 +329,9 @@ impl ScriptedCycleEmitter {
         match &mut self.mappings {
             ScriptedCycleMapping::Function(mapping_callback) => {
                 // set playback state
-                if let Err(err) =
-                    mapping_callback.set_context_playback_state(ContextPlaybackState::Seeking)
-                {
-                    mapping_callback.handle_error(&err);
-                }
+                mapping_callback
+                    .handle(|c| c.set_context_playback_state(ContextPlaybackState::Seeking));
+
                 if mapping_callback.is_stateful().unwrap_or(true) {
                     // run stateful callbacks but ignore results
                     for (channel_index, channel_events) in events.into_iter().enumerate() {
@@ -412,15 +407,13 @@ impl ScriptedCycleEmitter {
     fn apply_variables_callback(&mut self) {
         if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
             // update context
-            if let Err(err) = callback
-                .set_context_playback_state(ContextPlaybackState::Running)
-                .and(callback.set_context_parameters(
-                    &self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
-                ))
-                .and(callback.set_context_cycle_iteration(self.cycle.iteration()))
-            {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| {
+                c.set_context_playback_state(ContextPlaybackState::Running)
+                    .and(c.set_context_parameters(
+                        &self.parameters.iter().map(|(p, _)| Rc::clone(p)).collect(),
+                    ))
+                    .and(c.set_context_cycle_iteration(self.cycle.iteration()))
+            });
             // run
             match callback.call() {
                 Err(err) => {
@@ -461,14 +454,10 @@ impl Emitter for ScriptedCycleEmitter {
         }
         // pass time base to callbacks
         if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
-            if let Err(err) = callback.set_context_time_base(time_base) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_time_base(time_base));
         }
         if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
-            if let Err(err) = callback.set_context_time_base(time_base) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_time_base(time_base));
         }
     }
 
@@ -479,14 +468,10 @@ impl Emitter for ScriptedCycleEmitter {
         }
         // pass event to callbacks
         if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
-            if let Err(err) = callback.set_context_trigger_event(event) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_trigger_event(event));
         }
         if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
-            if let Err(err) = callback.set_context_trigger_event(event) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_trigger_event(event));
         }
     }
 
@@ -527,16 +512,12 @@ impl Emitter for ScriptedCycleEmitter {
 
         // pass parameters to the variables callback context
         if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
-            if let Err(err) = callback.set_context_parameters(&parameters) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_parameters(&parameters));
         }
 
         // pass parameters to the mapping callback context
         if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
-            if let Err(err) = callback.set_context_parameters(&parameters) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_parameters(&parameters));
         }
     }
 
@@ -571,13 +552,9 @@ impl Emitter for ScriptedCycleEmitter {
         if let ScriptedCycleMapping::Function(callback) = &mut self.variables {
             // reset iteration counter
             let iteration = 0;
-            if let Err(err) = callback.set_context_cycle_iteration(iteration) {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_cycle_iteration(iteration));
             // restore function
-            if let Err(err) = callback.reset() {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.reset());
         }
         if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
             // reset step counter
@@ -586,14 +563,9 @@ impl Emitter for ScriptedCycleEmitter {
             let step_length = 0.0;
             let step_time = 0.0;
             self.channel_steps.clear();
-            if let Err(err) = callback.set_context_cycle_step(channel, step, step_length, step_time)
-            {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.set_context_cycle_step(channel, step, step_length, step_time));
             // restore function
-            if let Err(err) = callback.reset() {
-                callback.handle_error(&err);
-            }
+            callback.handle(|c| c.reset());
         }
     }
 }

@@ -230,6 +230,16 @@ impl LuaCallback {
             .unwrap_or("anonymous function".to_string())
     }
 
+    /// Applies a function to itself and handles the error that may occur.
+    pub fn handle<F>(&mut self, fun: F)
+    where
+        F: FnOnce(&mut Self) -> LuaResult<()>,
+    {
+        if let Err(err) = fun(self) {
+            self.handle_error(&err);
+        }
+    }
+
     /// Sets the emitters playback state for the callback.
     pub fn set_context_playback_state(
         &mut self,
