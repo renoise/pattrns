@@ -141,27 +141,22 @@ impl Rhythm for ScriptedRhythm {
         // reset timeout
         self.timeout_hook.reset();
         // update function context from the new time base
-        if let Err(err) = self.callback.set_context_time_base(time_base) {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.set_context_time_base(time_base));
     }
 
     fn set_trigger_event(&mut self, event: &crate::Event) {
         // reset timeout
         self.timeout_hook.reset();
         // update function context from the new time base
-        if let Err(err) = self.callback.set_context_trigger_event(event) {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.set_context_trigger_event(event));
     }
 
     fn set_parameters(&mut self, parameters: ParameterSet) {
         // reset timeout
         self.timeout_hook.reset();
         // update function context with the new parameters
-        if let Err(err) = self.callback.set_context_parameters(&parameters) {
-            self.callback.handle_error(&err);
-        }
+        self.callback
+            .handle(|c| c.set_context_parameters(&parameters));
     }
 
     fn set_repeat_count(&mut self, count: Option<usize>) {
@@ -181,16 +176,10 @@ impl Rhythm for ScriptedRhythm {
         self.pulse_step = 0;
         self.pulse_time_step = 0.0;
         // update step in context
-        if let Err(err) = self
-            .callback
-            .set_context_pulse_step(self.pulse_step, self.pulse_time_step)
-        {
-            self.callback.handle_error(&err);
-        }
+        self.callback
+            .handle(|c| c.set_context_pulse_step(self.pulse_step, self.pulse_time_step));
         // reset function
-        if let Err(err) = self.callback.reset() {
-            self.callback.handle_error(&err);
-        }
+        self.callback.handle(|c| c.reset());
         // reset pulse and pulse iter
         self.pulse = None;
         self.pulse_iter = None;
