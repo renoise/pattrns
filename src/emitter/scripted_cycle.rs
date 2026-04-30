@@ -131,18 +131,8 @@ impl ScriptedCycleEmitter {
         timeout_hook.reset();
         let timeout_hook = Some(timeout_hook);
         // initialize emitter context for the function
-        let playback_state = ContextPlaybackState::Running;
-        let channel = 0;
-        let step = 0;
-        let step_length = 0.0;
         let mut mapping_callback = mapping_callback;
-        mapping_callback.set_cycle_map_context(
-            playback_state,
-            time_base,
-            channel,
-            step,
-            step_length,
-        )?;
+        mapping_callback.init_cycle_map_context(time_base)?;
         let mappings = ScriptedCycleMapping::Function(mapping_callback);
         let channel_steps = vec![];
         Ok(Self {
@@ -159,6 +149,7 @@ impl ScriptedCycleEmitter {
         channel_index: usize,
         channel_step: usize,
         step_length: f64,
+        step_time: f64,
         event: CycleEvent,
     ) -> LuaResult<Vec<Option<NoteEvent>>> {
         let mut note_events = {
@@ -169,6 +160,7 @@ impl ScriptedCycleEmitter {
                         channel_index,
                         channel_step,
                         step_length,
+                        step_time,
                     )?;
                     // call mapping function
                     let result = mapping_callback.call_with_arg(event.as_str().as_ref())?;
@@ -216,6 +208,16 @@ impl ScriptedCycleEmitter {
         // inject var callback values into cycle, if present
         self.apply_variables_callback();
 
+        // set mapping callback playback state
+        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
+            if let Err(err) = callback.set_context_playback_state(ContextPlaybackState::Running) {
+                callback.handle_error(&err);
+            }
+            if let Err(err) = callback.set_context_cycle_iteration(self.cycle.iteration()) {
+                callback.handle_error(&err);
+            }
+        }
+
         // run the cycle event generator
         let events = {
             match self.cycle.generate() {
@@ -235,13 +237,6 @@ impl ScriptedCycleEmitter {
             }
         };
 
-        // set mapping callback playback state
-        if let ScriptedCycleMapping::Function(callback) = &mut self.mappings {
-            if let Err(err) = callback.set_context_playback_state(ContextPlaybackState::Running) {
-                callback.handle_error(&err);
-            }
-        }
-
         // convert possibly mapped cycle channel items to a list of note events
         let mut timed_note_events = CycleNoteEvents::new();
         for (channel_index, channel_events) in events.into_iter().enumerate() {
@@ -256,7 +251,14 @@ impl ScriptedCycleEmitter {
                 let start = event.span().start();
                 let length = event.span().length();
                 let step_length = length.to_f64().unwrap_or(0.0);
-                match self.cycle_to_note_event(channel_index, channel_step, step_length, event) {
+                let step_time = start.to_f64().unwrap_or(0.0);
+                match self.cycle_to_note_event(
+                    channel_index,
+                    channel_step,
+                    step_length,
+                    step_time,
+                    event,
+                ) {
                     Err(err) => {
                         if let ScriptedCycleMapping::Function(callback) = &self.mappings {
                             callback.handle_error(&err)
@@ -347,10 +349,12 @@ impl ScriptedCycleEmitter {
                             self.channel_steps[channel_index] += 1;
                             // update step in context
                             let step_length = event.span().length().to_f64().unwrap_or(0.0);
+                            let step_time = event.span().start().to_f64().unwrap_or(0.0);
                             if let Err(err) = mapping_callback.set_context_cycle_step(
                                 channel_index,
                                 channel_step,
                                 step_length,
+                                step_time,
                             ) {
                                 mapping_callback.handle_error(&err);
                                 return;
@@ -580,8 +584,10 @@ impl Emitter for ScriptedCycleEmitter {
             let channel = 0;
             let step = 0;
             let step_length = 0.0;
+            let step_time = 0.0;
             self.channel_steps.clear();
-            if let Err(err) = callback.set_context_cycle_step(channel, step, step_length) {
+            if let Err(err) = callback.set_context_cycle_step(channel, step, step_length, step_time)
+            {
                 callback.handle_error(&err);
             }
             // restore function

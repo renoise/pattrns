@@ -222,12 +222,19 @@
 > channel/voice index within the cycle. each channel in the cycle gets emitted and thus mapped
 > separately, starting with the first channel index 1.
 
+### iteration : [`integer`](../API/builtins/integer.md)<a name="iteration"></a>
+> Iteration counter for the cycle that increases once per the whole cycle's output
+> Starts from 1 when the cycle starts running or after it got reset.
+
 ### step : [`integer`](../API/builtins/integer.md)<a name="step"></a>
 > Continues step counter for each channel, incrementing with each new mapped value in the cycle.
 > Starts from 1 when the cycle starts running or after it got reset.
 
 ### step_length : [`number`](../API/builtins/number.md)<a name="step_length"></a>
 > step length fraction within the cycle, where 1 is the total duration of a single cycle run.
+
+### step_time : [`number`](../API/builtins/number.md)<a name="step_time"></a>
+> step start fraction within the cycle, where 1 is the total duration of a single cycle run.
 
 ### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
 > Note that triggered the pattern, if any. Usually will be a monophonic note.

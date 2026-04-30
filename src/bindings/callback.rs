@@ -306,11 +306,13 @@ impl LuaCallback {
         channel: usize,
         step: usize,
         step_length: f64,
+        step_time: f64,
     ) -> LuaResult<()> {
         let values = &mut self.context.borrow_mut::<CallbackContext>()?.values;
         values.insert(b"channel", (channel + 1).into());
         values.insert(b"step", step.wrapping_add(1).into());
         values.insert(b"step_length", step_length.into());
+        values.insert(b"step_time", step_time.into());
         Ok(())
     }
 
@@ -363,17 +365,17 @@ impl LuaCallback {
     }
 
     /// Sets the cycle context for the mapping callbacks.
-    pub fn set_cycle_map_context(
-        &mut self,
-        playback_state: ContextPlaybackState,
-        time_base: &BeatTimeBase,
-        channel: usize,
-        step: usize,
-        step_length: f64,
-    ) -> LuaResult<()> {
+    pub fn init_cycle_map_context(&mut self, time_base: &BeatTimeBase) -> LuaResult<()> {
+        let playback_state = ContextPlaybackState::Running;
+        let channel = 0;
+        let step = 0;
+        let step_length = 0.0;
+        let step_time = 0.0;
+        let iteration = 1;
+        self.set_context_cycle_iteration(iteration)?;
         self.set_context_playback_state(playback_state)?;
         self.set_context_time_base(time_base)?;
-        self.set_context_cycle_step(channel, step, step_length)?;
+        self.set_context_cycle_step(channel, step, step_length, step_time)?;
         Ok(())
     }
 
