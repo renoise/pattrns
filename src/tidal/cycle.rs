@@ -378,10 +378,18 @@ impl Pitch {
 // -------------------------------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Indexed {
+    steps: Box<Step>,
+    index: Box<Step>,
+    alternating: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 enum Step {
     Var(Rc<str>),
     Single(Single),
     Subdivision(Subdivision),
+    Indexed(Indexed),
     Polymeter(Polymeter),
     Stack(Stack),
     Choices(Choices),
@@ -416,6 +424,7 @@ impl Step {
             Step::Single(_s) => vec![],
             Step::Polymeter(p) => p.stack.iter().collect(),
             Step::Subdivision(sd) => sd.steps.iter().collect(),
+            Step::Indexed(sd) => sd.steps.inner_steps(),
             Step::Choices(cs) => cs.choices.iter().collect(),
             Step::Stack(st) => st.stack.iter().collect(),
             Step::SpeedExpression(e) => vec![&e.step, &e.mult],
@@ -441,6 +450,10 @@ impl Step {
                 vars.insert(Rc::clone(name));
             }
             Step::Single(_s) => (),
+            Step::Indexed(i) => {
+                i.steps.get_vars(vars);
+                i.index.get_vars(vars);
+            }
             Step::Polymeter(pm) => {
                 pm.stack.iter().for_each(|s| s.get_vars(vars));
                 if let Some(c) = pm.count.as_ref() {
@@ -500,6 +513,30 @@ impl Step {
 
     fn subdivision(steps: Vec<Self>) -> Self {
         Self::Subdivision(Subdivision { steps })
+    }
+
+    fn subdivision_with_index(steps: Vec<Self>, index: Option<Self>) -> Self {
+        if let Some(index) = index {
+            Self::Indexed(Indexed {
+                steps: Box::new(Self::subdivision(steps)),
+                index: Box::new(index),
+                alternating: false,
+            })
+        } else {
+            Self::subdivision(steps)
+        }
+    }
+
+    fn alternating_with_index(steps: Vec<Self>, index: Option<Self>) -> Self {
+        if let Some(index) = index {
+            Self::Indexed(Indexed {
+                steps: Box::new(Self::subdivision(steps)),
+                index: Box::new(index),
+                alternating: true,
+            })
+        } else {
+            Self::alternating(steps)
+        }
     }
 
     fn alternating(steps: Vec<Self>) -> Self {
@@ -776,6 +813,17 @@ impl Constant {
             Self::Rest => None,
             Self::Hold => None,
             Self::Name(_n) => None,
+        }
+    }
+
+    fn to_index(&self, len: usize) -> Option<usize> {
+        match *self {
+            Self::Float(float) | Self::Target(Target::NamedFloat(_, float)) => {
+                Some((float.rem_euclid(1.0) * len as f64).floor() as usize)
+            }
+            _ => self
+                .to_integer()
+                .map(|int| (if int > 0 { int - 1 } else { 0 } as usize).rem_euclid(len)),
         }
     }
 
@@ -1082,6 +1130,15 @@ impl Events {
         }
     }
 
+    fn set_span(&mut self, span: Span) {
+        match self {
+            Events::Single(s) => s.span = span,
+            Events::Multi(m) => m.span = span,
+            Events::Poly(p) => p.span = span,
+        }
+        // self.set_length(span.length());
+    }
+
     fn first(&self) -> Option<&Event> {
         match self {
             Events::Single(s) => Some(s),
@@ -1184,6 +1241,27 @@ impl Events {
                 for e in &mut p.channels {
                     e.mutate_events(fun);
                 }
+            }
+        }
+    }
+
+    fn mutate_singles<F>(&mut self, fun: &mut F) -> Result<(), String>
+    where
+        F: FnMut(Event, &mut Events) -> Result<(), String>,
+    {
+        match self {
+            Events::Single(s) => fun(s.clone(), self),
+            Events::Multi(m) => {
+                for e in &mut m.events {
+                    e.mutate_singles(fun)?;
+                }
+                Ok(())
+            }
+            Events::Poly(p) => {
+                for e in &mut p.channels {
+                    e.mutate_singles(fun)?;
+                }
+                Ok(())
             }
         }
     }
@@ -1379,8 +1457,8 @@ impl CycleParser {
             Rule::variable => Self::variable(pair),
             Rule::single => Ok(Self::single(pair)?),
             Rule::repeat => Ok(Step::Repeat),
-            Rule::subdivision | Rule::mini => Self::group(pair, Step::subdivision),
-            Rule::alternating => Self::group(pair, Step::alternating),
+            Rule::subdivision | Rule::mini => Self::group(pair, Step::subdivision_with_index),
+            Rule::alternating => Self::group(pair, Step::alternating_with_index),
             Rule::polymeter => Self::polymeter(pair),
             Rule::range => Self::range(pair),
             Rule::expression => Self::expression(pair),
@@ -1590,8 +1668,14 @@ impl CycleParser {
         Ok(stacks)
     }
 
-    fn group(pair: Pair<Rule>, fun: fn(Vec<Step>) -> Step) -> Result<Step, String> {
-        let stacks = Self::stacks(pair.into_inner().collect())?;
+    fn group(pair: Pair<Rule>, fun: fn(Vec<Step>, Option<Step>) -> Step) -> Result<Step, String> {
+        let (stacked_pairs, count_pairs): (Vec<Pair<Rule>>, Vec<Pair<Rule>>) = pair
+            .into_inner()
+            .partition(|p| p.as_rule() != Rule::index_tail);
+
+        let stacks = Self::stacks(stacked_pairs)?;
+
+        let index = Self::index_tail(count_pairs)?;
 
         match stacks.len() {
             0 => Ok(Step::rest()),
@@ -1600,36 +1684,40 @@ impl CycleParser {
                 if steps.is_empty() {
                     Ok(Step::rest())
                 } else {
-                    Ok(fun(steps.to_owned()))
+                    Ok(fun(steps.to_owned(), index))
                 }
             }
             _ => Ok(Step::Stack(Stack {
-                stack: stacks.into_iter().map(fun).collect(),
+                stack: stacks
+                    .into_iter()
+                    .map(|steps| fun(steps, index.clone()))
+                    .collect(),
             })),
         }
     }
 
-    fn polymeter_tail(pair: Pair<Rule>) -> Result<Step, String> {
-        if let Some(count) = pair.clone().into_inner().next() {
-            Self::step(count)
+    fn index_tail(pairs: Vec<Pair<Rule>>) -> Result<Option<Step>, String> {
+        if let Some(pair) = pairs.first() {
+            if let Some(count) = pair.clone().into_inner().next() {
+                Ok(Some(Self::step(count)?))
+            } else {
+                Err(format!(
+                    "error in grammar, missing polymeter count '{}'",
+                    pair.as_str()
+                ))
+            }
+            // Some(Self::index_tail(pair.to_owned())?)
         } else {
-            Err(format!(
-                "error in grammar, missing polymeter count '{}'",
-                pair.as_str()
-            ))
+            Ok(None)
         }
     }
 
     fn polymeter(pair: Pair<Rule>) -> Result<Step, String> {
         let (stacked_pairs, count_pairs): (Vec<Pair<Rule>>, Vec<Pair<Rule>>) = pair
             .into_inner()
-            .partition(|p| p.as_rule() != Rule::polymeter_tail);
+            .partition(|p| p.as_rule() != Rule::index_tail);
 
-        let count: Option<Step> = if let Some(pair) = count_pairs.first() {
-            Some(Self::polymeter_tail(pair.to_owned())?)
-        } else {
-            None
-        };
+        let count = Self::index_tail(count_pairs)?;
 
         let stacks = Self::stacks(stacked_pairs)?;
 
@@ -2166,6 +2254,32 @@ impl Cycle {
                     targets: vec![],
                 })
             }
+            Step::Indexed(s) => {
+                let mut indices =
+                    Self::output(s.index.as_ref(), state, cycle, limit, overlap, vars)?;
+                let length = Self::sub_length(&s.steps, state, cycle, limit, overlap, vars)?;
+                let offset = if s.alternating { cycle } else { 0 };
+                indices.mutate_singles(&mut |event: Event, events: &mut Events| {
+                    *events = if let Some(i) = event.value.to_index(length.to_integer() as usize) {
+                        let mut out = Self::output_with_speed(
+                            &s.steps,
+                            &SpeedOp::Fit(length),
+                            &Step::constant(Constant::Integer(1), None),
+                            state,
+                            offset + i as u32,
+                            limit,
+                            overlap,
+                            vars,
+                        )?;
+                        out.set_span(events.get_span());
+                        out
+                    } else {
+                        Events::empty()
+                    };
+                    Ok(())
+                })?;
+                indices
+            }
             Step::Subdivision(sd) => {
                 if sd.steps.is_empty() {
                     Events::empty()
@@ -2404,6 +2518,7 @@ impl Cycle {
                 _ => format!("{:?} {:?}", s.value, s.string),
             },
             Step::Subdivision(sd) => format!("Subdivision [{}]", sd.steps.len()),
+            Step::Indexed(sd) => format!("Indexed [{:?}]", sd.index.as_ref()),
             Step::Polymeter(pm) => format!("Polymeter {{{:?}}}", pm.count),
             Step::Choices(cs) => format!("Choices |{}|", cs.choices.len()),
             Step::Stack(st) => format!("Stack ({})", st.stack.len()),

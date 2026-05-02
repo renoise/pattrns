@@ -22,6 +22,17 @@ fn assert_cycle_equality(a: &str, b: &str) -> Result<(), String> {
     );
     Ok(())
 }
+fn assert_cycles_equality(a: &str, bs: &[&str]) -> Result<(), String> {
+    let seed = rand::rng().random();
+    let mut cycle = Cycle::from(a)?.with_seed(seed);
+    for b in bs {
+        assert_eq!(
+            cycle.generate()?,
+            Cycle::from(b)?.with_seed(seed).generate()?,
+        );
+    }
+    Ok(())
+}
 
 fn assert_cycle_advancing(input: &str) -> Result<(), String> {
     let seed = rand::rng().random();
@@ -57,6 +68,29 @@ fn span() -> Result<(), String> {
 fn weight_and_replicate() -> Result<(), String> {
     let mut cycle = Cycle::from("a!1.5 b")?;
     let _events = cycle.generate()?;
+    Ok(())
+}
+
+#[test]
+fn indexing() -> Result<(), String> {
+    assert_cycle_equality("[a b c d]%0", "a")?;
+    assert_cycle_equality("[a b c d]%1", "a")?;
+    assert_cycle_equality("[a b c d]%2", "b")?;
+    assert_cycle_equality("[a b c d]%3", "c")?;
+    assert_cycle_equality("[a b c d]%4", "d")?;
+    assert_cycle_equality("[a b c d]%5", "a")?;
+    assert_cycle_equality("[a b c d]%0.1", "a")?;
+    assert_cycle_equality("[a b c d]%0.25", "b")?;
+    assert_cycle_equality("[a b c d]%0.499", "b")?;
+    assert_cycle_equality("[a b c d]%0.5", "c")?;
+    assert_cycle_equality("[a b c d]%0.999", "d")?;
+    assert_cycle_equality("[a b c d]%[1 3 3]", "a c c")?;
+    assert_cycle_equality("[a b c d]%[5 4 3]", "a d c")?;
+    assert_cycle_equality("[a b c d]%[1, 3, 4]", "a, c, d")?;
+    assert_cycle_equality("[a b c d]%<1 2 3>", "a")?;
+    assert_cycle_equality("[a b c d]%<[1*8 2*4 3*2 4]>", "a*8 b*4 c*2 d")?;
+
+    assert_cycles_equality("<a b c d>%2", &["b", "c", "d", "a"])?;
     Ok(())
 }
 
