@@ -1460,6 +1460,10 @@ impl CycleParser {
                                 Rc::from(name),
                                 Constant::parse_float(value.as_str())?,
                             )),
+                            Rule::signed_integer => Constant::Target(Target::NamedFloat(
+                                Rc::from(name),
+                                Constant::parse_float(value.as_str())?,
+                            )),
                             Rule::variable => {
                                 return Self::variable_target(
                                     pair,

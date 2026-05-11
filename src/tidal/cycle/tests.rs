@@ -61,6 +61,37 @@ fn weight_and_replicate() -> Result<(), String> {
 }
 
 #[test]
+fn transpose() -> Result<(), String> {
+    assert_eq!(
+        Cycle::from("a:t+1")?.generate()?,
+        [[Event::at(Fraction::from(0), Fraction::new(1, 1))
+            .with_note(9, 4)
+            .with_target(Target::named_float("t", 1.0)),]]
+    );
+    assert_eq!(
+        Cycle::from("a:t-1")?.generate()?,
+        [[Event::at(Fraction::from(0), Fraction::new(1, 1))
+            .with_note(9, 4)
+            .with_target(Target::named_float("t", -1.0)),]]
+    );
+    assert_cycles(
+        "a:t=<-12 12 0>",
+        vec![
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::named_float("t", -12.0))]],
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::named_float("t", 12.0))]],
+            vec![vec![Event::at(Fraction::from(0), Fraction::new(1, 1))
+                .with_note(9, 4)
+                .with_target(Target::named_float("t", 0.0))]],
+        ],
+    )?;
+    Ok(())
+}
+
+#[test]
 fn variables() -> Result<(), String> {
     assert!(SubCycle::from("a b c d").is_ok());
     // subcycles cannot contain variables
