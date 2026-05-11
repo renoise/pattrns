@@ -150,6 +150,12 @@ pub(crate) fn apply_cycle_note_properties(
                         note_event.delay = delay;
                     }
                 }
+                b"t" => {
+                    let offset = float_value_in_range(value, "transpose", -127.0..127.0)?;
+                    for note_event in note_events.iter_mut().flatten() {
+                        note_event.note = note_event.note.transposed(offset.round() as i32);
+                    }
+                }
                 b"g" => {
                     let glide = float_value_in_range(value, "glide", 0.0..)?;
                     for note_event in note_events.iter_mut().flatten() {
@@ -160,7 +166,7 @@ pub(crate) fn apply_cycle_note_properties(
                     return Err(
                         format!("invalid note property: '{name}'. ")
                             + "expecting only number values with  "
-                            + "'#' (instrument), 'v' (volume), 'p' (panning), 'd' (delay) or 'g' (glide) "
+                            + "'#' (instrument), 'v' (volume), 'p' (panning), 'd' (delay), 't' (transpose) or 'g' (glide) "
                             + "prefixes here.");
                 }
             },
