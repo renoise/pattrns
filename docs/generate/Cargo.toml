@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 # luals-docs-gen = { path = "../../../luals-docs-gen" }
-luals-docs-gen = { git = "https://github.com/emuell/luals-docs-gen", tag = "v0.2.2" }
+luals-docs-gen = { git = "https://github.com/emuell/luals-docs-gen", tag = "v0.3.0" }
