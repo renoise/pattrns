@@ -1,10 +1,61 @@
-# cycle
-<!-- toc -->
-# Global<a name="Global"></a>  
-
----  
+# cycle  
+* [global](#global)  
+	* [Functions](#functions)  
+		* [cycle](#cycle) ([`string`](../API/builtins/string.md)) `->` [`Cycle`](../API/cycle.md#Cycle)  
+	* [Aliases](#aliases)  
+		* [CycleMapFunction](#CycleMapFunction)  
+		* [CycleMapGenerator](#CycleMapGenerator)  
+		* [CycleMapNoteValue](#CycleMapNoteValue)  
+		* [CycleMapTable](#CycleMapTable)  
+		* [CycleVarFunction](#CycleVarFunction)  
+		* [CycleVarGenerator](#CycleVarGenerator)  
+		* [CycleVarTable](#CycleVarTable)  
+		* [NoteValue](#NoteValue)  
+		* [PlaybackState](#PlaybackState)  
+* [Cycle](#Cycle)  
+	* [Functions](#functions)  
+		* [map](#map) ([*self*](../API/builtins/self.md), [`CycleMapFunction`](#CycleMapFunction) | [`CycleMapGenerator`](#CycleMapGenerator) | [`CycleMapTable`](#CycleMapTable)) `->` [`Cycle`](../API/cycle.md#Cycle)  
+		* [var](#var) ([*self*](../API/builtins/self.md), [`CycleVarFunction`](#CycleVarFunction) | [`CycleVarGenerator`](#CycleVarGenerator) | [`CycleVarTable`](#CycleVarTable)) `->` [`Cycle`](../API/cycle.md#Cycle)  
+	* [Aliases](#aliases)  
+		* [CycleMapFunction](#CycleMapFunction)  
+		* [CycleMapGenerator](#CycleMapGenerator)  
+		* [CycleMapNoteValue](#CycleMapNoteValue)  
+		* [CycleMapTable](#CycleMapTable)  
+		* [CycleVarFunction](#CycleVarFunction)  
+		* [CycleVarGenerator](#CycleVarGenerator)  
+		* [CycleVarTable](#CycleVarTable)  
+		* [NoteValue](#NoteValue)  
+		* [PlaybackState](#PlaybackState)  
+* [CycleMapContext](#CycleMapContext)  
+	* [Properties](#properties)  
+		* [playback](#playback) : [`PlaybackState`](#PlaybackState)  
+		* [channel](#channel) : [`integer`](../API/builtins/integer.md)  
+		* [iteration](#iteration) : [`integer`](../API/builtins/integer.md)  
+		* [step](#step) : [`integer`](../API/builtins/integer.md)  
+		* [step_length](#step_length) : [`number`](../API/builtins/number.md)  
+		* [step_time](#step_time) : [`number`](../API/builtins/number.md)  
+		* [trigger](#trigger) : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)  
+		* [parameter](#parameter) : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>`  
+		* [beats_per_min](#beats_per_min) : [`number`](../API/builtins/number.md)  
+		* [beats_per_bar](#beats_per_bar) : [`integer`](../API/builtins/integer.md)  
+		* [samples_per_sec](#samples_per_sec) : [`integer`](../API/builtins/integer.md)  
+	* [Aliases](#aliases)  
+		* [PlaybackState](#PlaybackState)  
+* [CycleVarContext](#CycleVarContext)  
+	* [Properties](#properties)  
+		* [playback](#playback) : [`PlaybackState`](#PlaybackState)  
+		* [iteration](#iteration) : [`integer`](../API/builtins/integer.md)  
+		* [trigger](#trigger) : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)  
+		* [parameter](#parameter) : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>`  
+		* [beats_per_min](#beats_per_min) : [`number`](../API/builtins/number.md)  
+		* [beats_per_bar](#beats_per_bar) : [`integer`](../API/builtins/integer.md)  
+		* [samples_per_sec](#samples_per_sec) : [`integer`](../API/builtins/integer.md)  
+	* [Aliases](#aliases)  
+		* [PlaybackState](#PlaybackState)  
+# global { #global }
+---
 ## Functions
-### cycle(input : [`string`](../API/builtins/string.md))<a name="cycle"></a>
+### cycle(input : [`string`](../API/builtins/string.md)) { #cycle }
 `->`[`Cycle`](../API/cycle.md#Cycle)  
 
 > Create a note sequence from a Tidal Cycles mini-notation string.
@@ -34,29 +85,44 @@
 > ```lua
 > --Map custom identifiers to notes
 > cycle("bd(3,8)"):map({ bd = "c4 #1" })
->  ```  
+>  ```
+---
+# Aliases
+---
+---
+### CycleMapFunction { #CycleMapFunction }
+ (context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapNoteValue`](#CycleMapNoteValue)  
 
+---
+### CycleMapGenerator { #CycleMapGenerator }
+ (context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapFunction`](#CycleMapFunction)  
 
+---
+### CycleMapNoteValue { #CycleMapNoteValue }
+[`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[`[]`](../API/builtins/array.md)  
 
----  
-## Aliases  
-### CycleMapFunction<a name="CycleMapFunction"></a>
-(context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapNoteValue`](#CycleMapNoteValue)  
-  
-  
-### CycleMapGenerator<a name="CycleMapGenerator"></a>
-(context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapFunction`](#CycleMapFunction)  
-  
-  
-### CycleMapNoteValue<a name="CycleMapNoteValue"></a>
-[`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[]  
-  
-  
-### NoteValue<a name="NoteValue"></a>
+---
+### CycleMapTable { #CycleMapTable }
+{  }  
+
+---
+### CycleVarFunction { #CycleVarFunction }
+ (context : [`CycleVarContext`](../API/cycle.md#CycleVarContext)) `->` [`CycleVarTable`](#CycleVarTable)  
+
+---
+### CycleVarGenerator { #CycleVarGenerator }
+ (context : [`CycleVarContext`](../API/cycle.md#CycleVarContext)) `->` [`CycleVarFunction`](#CycleVarFunction)  
+
+---
+### CycleVarTable { #CycleVarTable }
+{  }  
+
+---
+### NoteValue { #NoteValue }
 [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`Note`](../API/note.md#Note) | [`NoteTable`](../API/note.md#NoteTable) | [`nil`](../API/builtins/nil.md)  
-  
-  
-### PlaybackState<a name="PlaybackState"></a>
+
+---
+### PlaybackState { #PlaybackState }
 `"running"` | `"seeking"`  
 > ```lua
 > -- - *seeking*: The pattern is auto-seeked to a target time. All events are discarded. Avoid
@@ -65,16 +131,12 @@
 > PlaybackState:
 >     | "seeking"
 >     | "running"
-> ```  
-  
-
-
-
-# Cycle<a name="Cycle"></a>  
-
+> ```
 ---  
+# Cycle { #Cycle }
+---
 ## Functions
-### map([*self*](../API/builtins/self.md), map : [`CycleMapFunction`](#CycleMapFunction) | [`CycleMapGenerator`](#CycleMapGenerator) | {  })<a name="map"></a>
+### map([*self*](../API/builtins/self.md), map : [`CycleMapFunction`](#CycleMapFunction) | [`CycleMapGenerator`](#CycleMapGenerator) | [`CycleMapTable`](#CycleMapTable)) { #map }
 `->`[`Cycle`](../API/cycle.md#Cycle)  
 
 > Map names in in the cycle to custom note events.
@@ -125,29 +187,61 @@
 >     return note(cmin:chord(tonumber(value)))
 >   end
 > end)
-> ```  
+> ```
+### var([*self*](../API/builtins/self.md), variables : [`CycleVarFunction`](#CycleVarFunction) | [`CycleVarGenerator`](#CycleVarGenerator) | [`CycleVarTable`](#CycleVarTable)) { #var }
+`->`[`Cycle`](../API/cycle.md#Cycle)  
 
+> Assign variables to be used inside the main cycle script via `$name` notation
+> 
+> By default any parameter you define will be available to the cycle as a variable
+> but you can override and declare additional variables by passing in a table of them
+> or passing a function that returns such a table.
+> 
+> #### examples:
+> ```lua
+> --Using a static table
+> cycle("$a $a $b $a $b $b"):var({
+>   a = "c a f e"
+>   b = "e f a c"
+> })
+> ```
+---
+# Aliases
+---
+---
+### CycleMapFunction { #CycleMapFunction }
+ (context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapNoteValue`](#CycleMapNoteValue)  
 
+---
+### CycleMapGenerator { #CycleMapGenerator }
+ (context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapFunction`](#CycleMapFunction)  
 
----  
-## Aliases  
-### CycleMapFunction<a name="CycleMapFunction"></a>
-(context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapNoteValue`](#CycleMapNoteValue)  
-  
-  
-### CycleMapGenerator<a name="CycleMapGenerator"></a>
-(context : [`CycleMapContext`](../API/cycle.md#CycleMapContext), value : [`string`](../API/builtins/string.md)) `->` [`CycleMapFunction`](#CycleMapFunction)  
-  
-  
-### CycleMapNoteValue<a name="CycleMapNoteValue"></a>
-[`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[]  
-  
-  
-### NoteValue<a name="NoteValue"></a>
+---
+### CycleMapNoteValue { #CycleMapNoteValue }
+[`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[`[]`](../API/builtins/array.md)  
+
+---
+### CycleMapTable { #CycleMapTable }
+{  }  
+
+---
+### CycleVarFunction { #CycleVarFunction }
+ (context : [`CycleVarContext`](../API/cycle.md#CycleVarContext)) `->` [`CycleVarTable`](#CycleVarTable)  
+
+---
+### CycleVarGenerator { #CycleVarGenerator }
+ (context : [`CycleVarContext`](../API/cycle.md#CycleVarContext)) `->` [`CycleVarFunction`](#CycleVarFunction)  
+
+---
+### CycleVarTable { #CycleVarTable }
+{  }  
+
+---
+### NoteValue { #NoteValue }
 [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`Note`](../API/note.md#Note) | [`NoteTable`](../API/note.md#NoteTable) | [`nil`](../API/builtins/nil.md)  
-  
-  
-### PlaybackState<a name="PlaybackState"></a>
+
+---
+### PlaybackState { #PlaybackState }
 `"running"` | `"seeking"`  
 > ```lua
 > -- - *seeking*: The pattern is auto-seeked to a target time. All events are discarded. Avoid
@@ -156,54 +250,55 @@
 > PlaybackState:
 >     | "seeking"
 >     | "running"
-> ```  
-  
-
-
-
-# CycleMapContext<a name="CycleMapContext"></a>  
-> Context passed to 'cycle:map` functions.  
-
+> ```
 ---  
+# CycleMapContext { #CycleMapContext }
+> Context passed to 'cycle:map` functions.
+---
 ## Properties
-### playback : [`PlaybackState`](#PlaybackState)<a name="playback"></a>
+### playback : [`PlaybackState`](#PlaybackState) { #playback }
 > Specifies how the cycle currently is running.
 
-### channel : [`integer`](../API/builtins/integer.md)<a name="channel"></a>
+### channel : [`integer`](../API/builtins/integer.md) { #channel }
 > channel/voice index within the cycle. each channel in the cycle gets emitted and thus mapped
 > separately, starting with the first channel index 1.
 
-### step : [`integer`](../API/builtins/integer.md)<a name="step"></a>
+### iteration : [`integer`](../API/builtins/integer.md) { #iteration }
+> Iteration counter for the cycle that increases once per the whole cycle's output
+> Starts from 1 when the cycle starts running or after it got reset.
+
+### step : [`integer`](../API/builtins/integer.md) { #step }
 > Continues step counter for each channel, incrementing with each new mapped value in the cycle.
 > Starts from 1 when the cycle starts running or after it got reset.
 
-### step_length : [`number`](../API/builtins/number.md)<a name="step_length"></a>
+### step_length : [`number`](../API/builtins/number.md) { #step_length }
 > step length fraction within the cycle, where 1 is the total duration of a single cycle run.
 
-### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
+### step_time : [`number`](../API/builtins/number.md) { #step_time }
+> step start fraction within the cycle, where 1 is the total duration of a single cycle run.
+
+### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md) { #trigger }
 > Note that triggered the pattern, if any. Usually will ne a monophic note.
 > To access the raw note number value use: `context.trigger.notes[1].key`
 
-### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
+### parameter : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>` { #parameter }
 > Current parameter values: parameter ids are keys, parameter values are values.
 > To access a parameter with id `enabled` use: `context.parameter.enabled`
 
-### beats_per_min : [`number`](../API/builtins/number.md)<a name="beats_per_min"></a>
+### beats_per_min : [`number`](../API/builtins/number.md) { #beats_per_min }
 > Project's tempo in beats per minutes.
 
-### beats_per_bar : [`integer`](../API/builtins/integer.md)<a name="beats_per_bar"></a>
+### beats_per_bar : [`integer`](../API/builtins/integer.md) { #beats_per_bar }
 > Project's beats per bar settings - usually will be 4.
 
-### samples_per_sec : [`integer`](../API/builtins/integer.md)<a name="samples_per_sec"></a>
+### samples_per_sec : [`integer`](../API/builtins/integer.md) { #samples_per_sec }
 > Project's audio playback sample rate in samples per second.
 
-  
-
-
-
----  
-## Aliases  
-### PlaybackState<a name="PlaybackState"></a>
+---
+# Aliases
+---
+---
+### PlaybackState { #PlaybackState }
 `"running"` | `"seeking"`  
 > ```lua
 > -- - *seeking*: The pattern is auto-seeked to a target time. All events are discarded. Avoid
@@ -212,8 +307,48 @@
 > PlaybackState:
 >     | "seeking"
 >     | "running"
-> ```  
-  
+> ```
+---  
+# CycleVarContext { #CycleVarContext }
+> Context passed to 'cycle:var` functions.
+---
+## Properties
+### playback : [`PlaybackState`](#PlaybackState) { #playback }
+> Specifies how the cycle currently is running.
 
+### iteration : [`integer`](../API/builtins/integer.md) { #iteration }
+> Iteration counter for the cycle that increases once per the whole cycle's output
+> Starts from 1 when the cycle starts running or after it got reset.
 
+### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md) { #trigger }
+> Note that triggered the pattern, if any. Usually will ne a monophic note.
+> To access the raw note number value use: `context.trigger.notes[1].key`
 
+### parameter : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>` { #parameter }
+> Current parameter values: parameter ids are keys, parameter values are values.
+> To access a parameter with id `enabled` use: `context.parameter.enabled`
+
+### beats_per_min : [`number`](../API/builtins/number.md) { #beats_per_min }
+> Project's tempo in beats per minutes.
+
+### beats_per_bar : [`integer`](../API/builtins/integer.md) { #beats_per_bar }
+> Project's beats per bar settings - usually will be 4.
+
+### samples_per_sec : [`integer`](../API/builtins/integer.md) { #samples_per_sec }
+> Project's audio playback sample rate in samples per second.
+
+---
+# Aliases
+---
+---
+### PlaybackState { #PlaybackState }
+`"running"` | `"seeking"`  
+> ```lua
+> -- - *seeking*: The pattern is auto-seeked to a target time. All events are discarded. Avoid
+> --   unnecessary computations while seeking, and only maintain your generator's internal state.
+> -- - *running*: The pattern is played back regularly. Events are emitted and audible.
+> PlaybackState:
+>     | "seeking"
+>     | "running"
+> ```
+---

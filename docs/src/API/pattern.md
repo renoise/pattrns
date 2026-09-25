@@ -1,10 +1,62 @@
-# pattern
-<!-- toc -->
-# Global<a name="Global"></a>  
-
----  
+# pattern  
+* [global](#global)  
+	* [Functions](#functions)  
+		* [pattern](#pattern) ([`PatternOptions`](../API/pattern.md#PatternOptions)) `->` [`userdata`](../API/builtins/userdata.md)  
+	* [Aliases](#aliases)  
+		* [NoteValue](#NoteValue)  
+		* [PulseValue](#PulseValue)  
+* [EventContext](#EventContext)  
+	* [Properties](#properties)  
+		* [trigger](#trigger) : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)  
+		* [parameter](#parameter) : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>`  
+		* [beats_per_min](#beats_per_min) : [`number`](../API/builtins/number.md)  
+		* [beats_per_bar](#beats_per_bar) : [`integer`](../API/builtins/integer.md)  
+		* [samples_per_sec](#samples_per_sec) : [`integer`](../API/builtins/integer.md)  
+		* [pulse_step](#pulse_step) : [`integer`](../API/builtins/integer.md)  
+		* [pulse_time_step](#pulse_time_step) : [`number`](../API/builtins/number.md)  
+		* [pulse_time](#pulse_time) : [`number`](../API/builtins/number.md)  
+		* [pulse_value](#pulse_value) : [`number`](../API/builtins/number.md)  
+		* [playback](#playback) : [`PlaybackState`](#PlaybackState)  
+		* [step](#step) : [`integer`](../API/builtins/integer.md)  
+	* [Aliases](#aliases)  
+		* [PlaybackState](#PlaybackState)  
+* [GateContext](#GateContext)  
+	* [Properties](#properties)  
+		* [trigger](#trigger) : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)  
+		* [parameter](#parameter) : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>`  
+		* [beats_per_min](#beats_per_min) : [`number`](../API/builtins/number.md)  
+		* [beats_per_bar](#beats_per_bar) : [`integer`](../API/builtins/integer.md)  
+		* [samples_per_sec](#samples_per_sec) : [`integer`](../API/builtins/integer.md)  
+		* [pulse_step](#pulse_step) : [`integer`](../API/builtins/integer.md)  
+		* [pulse_time_step](#pulse_time_step) : [`number`](../API/builtins/number.md)  
+		* [pulse_time](#pulse_time) : [`number`](../API/builtins/number.md)  
+		* [pulse_value](#pulse_value) : [`number`](../API/builtins/number.md)  
+* [PatternOptions](#PatternOptions)  
+	* [Properties](#properties)  
+		* [unit](#unit) : `"ms"` | `"seconds"` | `"bars"` | `"beats"` | `"1/1"` | `"1/2"` | `"1/4"` | `"1/8"` | `"1/16"` | `"1/32"` | `"1/64"`  
+		* [resolution](#resolution) : [`number`](../API/builtins/number.md)  
+		* [offset](#offset) : [`number`](../API/builtins/number.md)  
+		* [parameter](#parameter) : [`Parameter`](../API/parameter.md#Parameter)[`[]`](../API/builtins/array.md)  
+		* [pulse](#pulse) : [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[`[]`](../API/builtins/array.md) |  (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md) |  (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->`  (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)  
+		* [repeats](#repeats) : [`boolean`](../API/builtins/boolean.md) | [`integer`](../API/builtins/integer.md)  
+		* [gate](#gate) :  (context : [`GateContext`](../API/pattern.md#GateContext)) `->` [`boolean`](../API/builtins/boolean.md) |  (context : [`GateContext`](../API/pattern.md#GateContext)) `->`  (context : [`GateContext`](../API/pattern.md#GateContext)) `->` [`boolean`](../API/builtins/boolean.md)  
+		* [event](#event) : [`Cycle`](../API/cycle.md#Cycle) | [`Sequence`](../API/sequence.md#Sequence) | [`Note`](../API/note.md#Note) | [`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[`[]`](../API/builtins/array.md) |  (context : [`EventContext`](../API/pattern.md#EventContext)) `->` [`NoteValue`](#NoteValue) |  (context : [`EventContext`](../API/pattern.md#EventContext)) `->`  (context : [`EventContext`](../API/pattern.md#EventContext)) `->` [`NoteValue`](#NoteValue)  
+	* [Aliases](#aliases)  
+		* [NoteValue](#NoteValue)  
+		* [PulseValue](#PulseValue)  
+* [PulseContext](#PulseContext)  
+	* [Properties](#properties)  
+		* [trigger](#trigger) : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)  
+		* [parameter](#parameter) : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>`  
+		* [beats_per_min](#beats_per_min) : [`number`](../API/builtins/number.md)  
+		* [beats_per_bar](#beats_per_bar) : [`integer`](../API/builtins/integer.md)  
+		* [samples_per_sec](#samples_per_sec) : [`integer`](../API/builtins/integer.md)  
+		* [pulse_step](#pulse_step) : [`integer`](../API/builtins/integer.md)  
+		* [pulse_time_step](#pulse_time_step) : [`number`](../API/builtins/number.md)  
+# global { #global }
+---
 ## Functions
-### pattern(options : [`PatternOptions`](../API/pattern.md#PatternOptions))<a name="pattern"></a>
+### pattern(options : [`PatternOptions`](../API/pattern.md#PatternOptions)) { #pattern }
 `->`[`userdata`](../API/builtins/userdata.md)  
 
 > Create a new pattern with the given properties table:
@@ -65,60 +117,55 @@
 >   unit = "bars",
 >   event = cycle("[c4 [f5 f4]*2]|[c4 [g5 g4]*3]")
 > }
-> ```  
-
-
-
----  
-## Aliases  
-### NoteValue<a name="NoteValue"></a>
+> ```
+---
+# Aliases
+---
+---
+### NoteValue { #NoteValue }
 [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`Note`](../API/note.md#Note) | [`NoteTable`](../API/note.md#NoteTable) | [`nil`](../API/builtins/nil.md)  
-  
-  
-### PulseValue<a name="PulseValue"></a>
-[`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[] | `0` | `1` | [`nil`](../API/builtins/nil.md)  
+
+---
+### PulseValue { #PulseValue }
+[`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[`[]`](../API/builtins/array.md) | `0` | `1` | [`nil`](../API/builtins/nil.md)  
 > ```lua
 > -- Single pulse value or a nested subdivision of pulses within a rhythm's pulse.
 > PulseValue:
 >     | 0
 >     | 1
-> ```  
-  
-
-
-
-# EventContext<a name="EventContext"></a>  
-> Event related context passed to functions in 'emit'.  
-
+> ```
 ---  
+# EventContext { #EventContext }
+> Event related context passed to functions in 'emit'.
+---
 ## Properties
-### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
+### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md) { #trigger }
 > Note that triggered the pattern, if any. Usually will ne a monophic note.
 > To access the raw note number value use: `context.trigger.notes[1].key`
 
-### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
+### parameter : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>` { #parameter }
 > Current parameter values: parameter ids are keys, parameter values are values.
 > To access a parameter with id `enabled` use: `context.parameter.enabled`
 
-### beats_per_min : [`number`](../API/builtins/number.md)<a name="beats_per_min"></a>
+### beats_per_min : [`number`](../API/builtins/number.md) { #beats_per_min }
 > Project's tempo in beats per minutes.
 
-### beats_per_bar : [`integer`](../API/builtins/integer.md)<a name="beats_per_bar"></a>
+### beats_per_bar : [`integer`](../API/builtins/integer.md) { #beats_per_bar }
 > Project's beats per bar settings - usually will be 4.
 
-### samples_per_sec : [`integer`](../API/builtins/integer.md)<a name="samples_per_sec"></a>
+### samples_per_sec : [`integer`](../API/builtins/integer.md) { #samples_per_sec }
 > Project's audio playback sample rate in samples per second.
 
-### pulse_step : [`integer`](../API/builtins/integer.md)<a name="pulse_step"></a>
+### pulse_step : [`integer`](../API/builtins/integer.md) { #pulse_step }
 > Continues pulse counter, incrementing with each new **skipped or emitted pulse**.
 > Unlike `step` in event this includes all pulses, so it also counts pulses which do
 > not emit events. Starts from 1 when the pattern starts running or after it got reset.
 
-### pulse_time_step : [`number`](../API/builtins/number.md)<a name="pulse_time_step"></a>
+### pulse_time_step : [`number`](../API/builtins/number.md) { #pulse_time_step }
 > Continues pulse time counter, incrementing with each new **skipped or emitted pulse**.
 > Starts from 0 and increases with each new pulse by the pulse's step time duration.
 
-### pulse_time : [`number`](../API/builtins/number.md)<a name="pulse_time"></a>
+### pulse_time : [`number`](../API/builtins/number.md) { #pulse_time }
 > Current pulse's step time as fraction of a full step in the pulse. For simple pulses this
 > will be 1, for pulses in subdivisions this will be the reciprocal of the number of steps in
 > the subdivision, relative to the parent subdivisions pulse step time.
@@ -127,25 +174,23 @@
 > {1, {1, 1}} --> step times: {1, {0.5, 0.5}}
 > ```
 
-### pulse_value : [`number`](../API/builtins/number.md)<a name="pulse_value"></a>
+### pulse_value : [`number`](../API/builtins/number.md) { #pulse_value }
 > Current pulse value. For binary pulses this will be 0 or 1, but it can be any number value.
 
-### playback : [`PlaybackState`](#PlaybackState)<a name="playback"></a>
+### playback : [`PlaybackState`](#PlaybackState) { #playback }
 > Specifies how the pattern currently is running.
 
-### step : [`integer`](../API/builtins/integer.md)<a name="step"></a>
+### step : [`integer`](../API/builtins/integer.md) { #step }
 > Continues step counter, incrementing with each new *emitted* pulse.
 > Unlike `pulse_step` this does not include skipped, zero values pulses so it basically counts
 > how often the event function already got called.
 > Starts from 1 when the pattern starts running or is reset.
 
-  
-
-
-
----  
-## Aliases  
-### PlaybackState<a name="PlaybackState"></a>
+---
+# Aliases
+---
+---
+### PlaybackState { #PlaybackState }
 `"running"` | `"seeking"`  
 > ```lua
 > -- - *seeking*: The pattern is auto-seeked to a target time. All events are discarded. Avoid
@@ -154,43 +199,39 @@
 > PlaybackState:
 >     | "seeking"
 >     | "running"
-> ```  
-  
-
-
-
-# GateContext<a name="GateContext"></a>  
-> Pulse value context passed to functions in `gate` and `event`.  
-
+> ```
 ---  
+# GateContext { #GateContext }
+> Pulse value context passed to functions in `gate` and `event`.
+---
 ## Properties
-### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
+### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md) { #trigger }
 > Note that triggered the pattern, if any. Usually will ne a monophic note.
 > To access the raw note number value use: `context.trigger.notes[1].key`
 
-### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
+### parameter : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>` { #parameter }
 > Current parameter values: parameter ids are keys, parameter values are values.
 > To access a parameter with id `enabled` use: `context.parameter.enabled`
 
-### beats_per_min : [`number`](../API/builtins/number.md)<a name="beats_per_min"></a>
+### beats_per_min : [`number`](../API/builtins/number.md) { #beats_per_min }
 > Project's tempo in beats per minutes.
 
-### beats_per_bar : [`integer`](../API/builtins/integer.md)<a name="beats_per_bar"></a>
+### beats_per_bar : [`integer`](../API/builtins/integer.md) { #beats_per_bar }
 > Project's beats per bar settings - usually will be 4.
 
-### samples_per_sec : [`integer`](../API/builtins/integer.md)<a name="samples_per_sec"></a>
+### samples_per_sec : [`integer`](../API/builtins/integer.md) { #samples_per_sec }
 > Project's audio playback sample rate in samples per second.
 
-### pulse_step : [`integer`](../API/builtins/integer.md)<a name="pulse_step"></a>
+### pulse_step : [`integer`](../API/builtins/integer.md) { #pulse_step }
 > Continues pulse counter, incrementing with each new **skipped or emitted pulse**.
 > Unlike `step` in event this includes all pulses, so it also counts pulses which do
 > not emit events. Starts from 1 when the pattern starts running or after it got reset.
 
-### pulse_time_step : [`number`](../API/builtins/number.md)<a name="pulse_time_step"></a>
+### pulse_time_step : [`number`](../API/builtins/number.md) { #pulse_time_step }
 > Continues pulse time counter, incrementing with each new **skipped or emitted pulse**.
 > Starts from 0 and increases with each new pulse by the pulse's step time duration.
 
-### pulse_time : [`number`](../API/builtins/number.md)<a name="pulse_time"></a>
+### pulse_time : [`number`](../API/builtins/number.md) { #pulse_time }
 > Current pulse's step time as fraction of a full step in the pulse. For simple pulses this
 > will be 1, for pulses in subdivisions this will be the reciprocal of the number of steps in
 > the subdivision, relative to the parent subdivisions pulse step time.
@@ -199,19 +240,14 @@
 > {1, {1, 1}} --> step times: {1, {0.5, 0.5}}
 > ```
 
-### pulse_value : [`number`](../API/builtins/number.md)<a name="pulse_value"></a>
+### pulse_value : [`number`](../API/builtins/number.md) { #pulse_value }
 > Current pulse value. For binary pulses this will be 0 or 1, but it can be any number value.
-
   
-
-
-
-# PatternOptions<a name="PatternOptions"></a>  
-> Construction options for a new pattern.  
-
----  
+# PatternOptions { #PatternOptions }
+> Construction options for a new pattern.
+---
 ## Properties
-### unit : `"ms"` | `"seconds"` | `"bars"` | `"beats"` | `"1/1"` | `"1/2"` | `"1/4"` | `"1/8"` | `"1/16"` | `"1/32"` | `"1/64"`<a name="unit"></a>
+### unit : `"ms"` | `"seconds"` | `"bars"` | `"beats"` | `"1/1"` | `"1/2"` | `"1/4"` | `"1/8"` | `"1/16"` | `"1/32"` | `"1/64"` { #unit }
 > Base time unit of the pattern. Use `resolution` to apply an additional factor, in order to
 > create other less common time bases.
 > #### examples:
@@ -226,7 +262,7 @@
 > resolution = 2/3
 > ```
 
-### resolution : [`number`](../API/builtins/number.md)<a name="resolution"></a>
+### resolution : [`number`](../API/builtins/number.md) { #resolution }
 > Factor which is applied on `unit` to specify the final time resolution of the pattern.
 > #### examples:
 > ```lua
@@ -240,7 +276,7 @@
 > resolution = 2/3
 > ```
 
-### offset : [`number`](../API/builtins/number.md)<a name="offset"></a>
+### offset : [`number`](../API/builtins/number.md) { #offset }
 > Optional offset in `unit * resolution` time units. By default 0.
 > When set, the pattern's event output will be delayed by the given offset value.
 > #### examples:
@@ -251,7 +287,7 @@
 > offset = 4
 > ```
 
-### parameter : [`Parameter`](../API/parameter.md#Parameter)[]<a name="parameter"></a>
+### parameter : [`Parameter`](../API/parameter.md#Parameter)[`[]`](../API/builtins/array.md) { #parameter }
 > Define optional parameters for the pattern. Parameters can dynamically
 > change a patterns behavior everywhere where `context`s are passed, e.g. in `pulse`,
 > `gate`, `event` or `cycle` map generator functions.
@@ -275,7 +311,7 @@
 > }
 > ```
 
-### pulse : [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[] | (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md) | (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)<a name="pulse"></a>
+### pulse : [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[`[]`](../API/builtins/array.md) |  (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md) |  (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->`  (context : [`PulseContext`](../API/pattern.md#PulseContext)) `->` [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md) { #pulse }
 > Defines the rhythmical part of the pattern. With the default `gate` implementation,
 > each pulse with a value of `1` or `true` will cause an event from the `event` property
 > to be triggered in the pattern's time unit. `0`, `false` or `nil` values do not trigger.
@@ -320,7 +356,7 @@
 > end
 > ```
 
-### repeats : [`boolean`](../API/builtins/boolean.md) | [`integer`](../API/builtins/integer.md)<a name="repeats"></a>
+### repeats : [`boolean`](../API/builtins/boolean.md) | [`integer`](../API/builtins/integer.md) { #repeats }
 > If and how many times a pattern should repeat. When 0 or false, the pattern does not repeat
 > and plays back only once. When true, the pattern repeats endlessly, which is the default.
 > When a number > 0, this specifies the number of times the pattern repeats until it stops.
@@ -341,7 +377,7 @@
 > repeat = true
 > ```
 
-### gate : (context : [`GateContext`](../API/pattern.md#GateContext)) `->` [`boolean`](../API/builtins/boolean.md) | (context : [`GateContext`](../API/pattern.md#GateContext)) `->` (context : [`GateContext`](../API/pattern.md#GateContext)) `->` [`boolean`](../API/builtins/boolean.md)<a name="gate"></a>
+### gate :  (context : [`GateContext`](../API/pattern.md#GateContext)) `->` [`boolean`](../API/builtins/boolean.md) |  (context : [`GateContext`](../API/pattern.md#GateContext)) `->`  (context : [`GateContext`](../API/pattern.md#GateContext)) `->` [`boolean`](../API/builtins/boolean.md) { #gate }
 > Optional pulse train filter function which filters events between the pulse and event emitter.
 > By default a threshold gate, which passes all pulse values greater than zero.
 > 
@@ -363,7 +399,7 @@
 > end
 > ```
 
-### event : [`Cycle`](../API/cycle.md#Cycle) | [`Sequence`](../API/sequence.md#Sequence) | [`Note`](../API/note.md#Note) | [`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[] | (context : [`EventContext`](../API/pattern.md#EventContext)) `->` [`NoteValue`](#NoteValue) | (context : [`EventContext`](../API/pattern.md#EventContext)) `->` (context : [`EventContext`](../API/pattern.md#EventContext)) `->` [`NoteValue`](#NoteValue)<a name="event"></a>
+### event : [`Cycle`](../API/cycle.md#Cycle) | [`Sequence`](../API/sequence.md#Sequence) | [`Note`](../API/note.md#Note) | [`NoteValue`](#NoteValue) | [`NoteValue`](#NoteValue)[`[]`](../API/builtins/array.md) |  (context : [`EventContext`](../API/pattern.md#EventContext)) `->` [`NoteValue`](#NoteValue) |  (context : [`EventContext`](../API/pattern.md#EventContext)) `->`  (context : [`EventContext`](../API/pattern.md#EventContext)) `->` [`NoteValue`](#NoteValue) { #event }
 > Specify the event values of the pattern. For every pulse in the pulse pattern, an event
 > is picked from the specified event sequence. When the end of the sequence is reached, it starts
 > again from the beginning.
@@ -417,60 +453,49 @@
 > event = cycle("<[a3 c4 e4 a4]*3 [d4 g3 g4 c4]>"),
 > ```
 
-  
-
-
-
----  
-## Aliases  
-### NoteValue<a name="NoteValue"></a>
+---
+# Aliases
+---
+---
+### NoteValue { #NoteValue }
 [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`Note`](../API/note.md#Note) | [`NoteTable`](../API/note.md#NoteTable) | [`nil`](../API/builtins/nil.md)  
-  
-  
-### PulseValue<a name="PulseValue"></a>
-[`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[] | `0` | `1` | [`nil`](../API/builtins/nil.md)  
+
+---
+### PulseValue { #PulseValue }
+[`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | [`boolean`](../API/builtins/boolean.md) | [`number`](../API/builtins/number.md) | `0` | `1` | [`PulseValue`](#PulseValue) | [`nil`](../API/builtins/nil.md)[`[]`](../API/builtins/array.md) | `0` | `1` | [`nil`](../API/builtins/nil.md)  
 > ```lua
 > -- Single pulse value or a nested subdivision of pulses within a rhythm's pulse.
 > PulseValue:
 >     | 0
 >     | 1
-> ```  
-  
-
-
-
-# PulseContext<a name="PulseContext"></a>  
-> Pulse timing context passed to functions in `pulse` and `gate`.  
-
+> ```
 ---  
+# PulseContext { #PulseContext }
+> Pulse timing context passed to functions in `pulse` and `gate`.
+---
 ## Properties
-### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md)<a name="trigger"></a>
+### trigger : [`Note`](../API/note.md#Note)[`?`](../API/builtins/nil.md) { #trigger }
 > Note that triggered the pattern, if any. Usually will ne a monophic note.
 > To access the raw note number value use: `context.trigger.notes[1].key`
 
-### parameter : table<[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)><a name="parameter"></a>
+### parameter : [`table`](../API/builtins/table.md)`<`[`string`](../API/builtins/string.md), [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)`>` { #parameter }
 > Current parameter values: parameter ids are keys, parameter values are values.
 > To access a parameter with id `enabled` use: `context.parameter.enabled`
 
-### beats_per_min : [`number`](../API/builtins/number.md)<a name="beats_per_min"></a>
+### beats_per_min : [`number`](../API/builtins/number.md) { #beats_per_min }
 > Project's tempo in beats per minutes.
 
-### beats_per_bar : [`integer`](../API/builtins/integer.md)<a name="beats_per_bar"></a>
+### beats_per_bar : [`integer`](../API/builtins/integer.md) { #beats_per_bar }
 > Project's beats per bar settings - usually will be 4.
 
-### samples_per_sec : [`integer`](../API/builtins/integer.md)<a name="samples_per_sec"></a>
+### samples_per_sec : [`integer`](../API/builtins/integer.md) { #samples_per_sec }
 > Project's audio playback sample rate in samples per second.
 
-### pulse_step : [`integer`](../API/builtins/integer.md)<a name="pulse_step"></a>
+### pulse_step : [`integer`](../API/builtins/integer.md) { #pulse_step }
 > Continues pulse counter, incrementing with each new **skipped or emitted pulse**.
 > Unlike `step` in event this includes all pulses, so it also counts pulses which do
 > not emit events. Starts from 1 when the pattern starts running or after it got reset.
 
-### pulse_time_step : [`number`](../API/builtins/number.md)<a name="pulse_time_step"></a>
+### pulse_time_step : [`number`](../API/builtins/number.md) { #pulse_time_step }
 > Continues pulse time counter, incrementing with each new **skipped or emitted pulse**.
 > Starts from 0 and increases with each new pulse by the pulse's step time duration.
-
-  
-
-
-

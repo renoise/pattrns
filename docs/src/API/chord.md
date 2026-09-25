@@ -1,10 +1,15 @@
-# chord
-<!-- toc -->
-# Global<a name="Global"></a>  
-
----  
+# chord  
+* [global](#global)  
+	* [Functions](#functions)  
+		* [chord](#chord) ([`NoteValue`](#NoteValue), [`ChordName`](#ChordName)) `->` [`Note`](../API/note.md#Note)  
+		* [chord_names](#chord_names) () `->` [`string`](../API/builtins/string.md)[`[]`](../API/builtins/array.md)  
+	* [Aliases](#aliases)  
+		* [ChordName](#ChordName)  
+		* [NoteValue](#NoteValue)  
+# global { #global }
+---
 ## Functions
-### chord(key : [`NoteValue`](#NoteValue), mode : [`ChordName`](#ChordName))<a name="chord"></a>
+### chord(key : [`NoteValue`](#NoteValue), mode : [`ChordName`](#ChordName)) { #chord }
 `->`[`Note`](../API/note.md#Note)  
 
 > Create a new chord from the given key notes and a chord name or an array of custom intervals.
@@ -90,16 +95,15 @@
 >     | "9sus2"
 >     | "9sus4"
 > ```
-### `chord_names()`<a name="chord_names"></a>
-`->`[`string`](../API/builtins/string.md)[]  
+### `chord_names()` { #chord_names }
+`->`[`string`](../API/builtins/string.md)[`[]`](../API/builtins/array.md)  
 
-> Return supported chord names.  
-
-
-
----  
-## Aliases  
-### ChordName<a name="ChordName"></a>
+> Return supported chord names.
+---
+# Aliases
+---
+---
+### ChordName { #ChordName }
 [`string`](../API/builtins/string.md) | `"7#5"` | `"7b5"` | `"7b9"` | `"7sus2"` | `"7sus4"` | `"9sus2"` | `"9sus4"` | `"add11"` | `"add13"` | `"add9"` | `"augmented"` | `"diminished"` | `"diminished7"` | `"dom11"` | `"dom13"` | `"dom7"` | `"dom9"` | `"eleven"` | `"five"` | `"major"` | `"major11"` | `"major13"` | `"major7"` | `"major9"` | `"minor"` | `"minor#5"` | `"minor11"` | `"minor13"` | `"minor6"` | `"minor69"` | `"minor7"` | `"minor7#5"` | `"minor7#9"` | `"minor7b5"` | `"minor7b9"` | `"minor9"` | `"minorMajor7"` | `"nine"` | `"seven"` | `"six"` | `"sixNine"` | `"sus2"` | `"sus4"` | `"thirteen"`  
 > ```lua
 > -- Available chords.
@@ -148,12 +152,9 @@
 >     | "7sus4"
 >     | "9sus2"
 >     | "9sus4"
-> ```  
-  
-### NoteValue<a name="NoteValue"></a>
+> ```
+---
+### NoteValue { #NoteValue }
 [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`Note`](../API/note.md#Note) | [`NoteTable`](../API/note.md#NoteTable) | [`nil`](../API/builtins/nil.md)  
-  
-  
 
-
-
+---

@@ -1,10 +1,24 @@
-# sequence
-<!-- toc -->
-# Global<a name="Global"></a>  
-
----  
+# sequence  
+* [global](#global)  
+	* [Functions](#functions)  
+		* [sequence](#sequence) (...[`NoteValue`](#NoteValue)) `->` [`Sequence`](../API/sequence.md#Sequence)  
+	* [Aliases](#aliases)  
+		* [NoteValue](#NoteValue)  
+* [Sequence](#Sequence)  
+	* [Properties](#properties)  
+		* [notes](#notes) : [`NoteTable`](../API/note.md#NoteTable)[`[]`](../API/builtins/array.md)[`[]`](../API/builtins/array.md)  
+	* [Functions](#functions)  
+		* [transpose](#transpose) ([*self*](../API/builtins/self.md), [`integer`](../API/builtins/integer.md) | [`integer`](../API/builtins/integer.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
+		* [amplify](#amplify) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
+		* [instrument](#instrument) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
+		* [volume](#volume) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
+		* [panning](#panning) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
+		* [delay](#delay) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
+		* [glide](#glide) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
+# global { #global }
+---
 ## Functions
-### sequence(...[`NoteValue`](#NoteValue))<a name="sequence"></a>
+### sequence(...[`NoteValue`](#NoteValue)) { #sequence }
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
 > Create a sequence from an array of note values or note value varargs.
@@ -18,29 +32,26 @@
 > sequence(48, "c5", {})
 > -- sequence of a +5 transposed C4 and G4 major chord
 > sequence("c4'maj", "g4'maj"):transpose(5)
->  ```  
-
-
-
----  
-## Aliases  
-### NoteValue<a name="NoteValue"></a>
+> -- glide from c4 to e4
+> sequence{"c4", "e4 g1.0"}
+> -- glide from c4 to e4 in half of the step time
+> sequence{"c4", "e4 g0.5"}
+>  ```
+---
+# Aliases
+---
+---
+### NoteValue { #NoteValue }
 [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`Note`](../API/note.md#Note) | [`NoteTable`](../API/note.md#NoteTable) | [`nil`](../API/builtins/nil.md)  
-  
-  
-
-
-
-# Sequence<a name="Sequence"></a>  
 
 ---  
+# Sequence { #Sequence }
+---
 ## Properties
-### notes : [`NoteTable`](../API/note.md#NoteTable)[][]<a name="notes"></a>
-  
-
----  
+### notes : [`NoteTable`](../API/note.md#NoteTable)[`[]`](../API/builtins/array.md)[`[]`](../API/builtins/array.md) { #notes }
+---
 ## Functions
-### transpose([*self*](../API/builtins/self.md), step : [`integer`](../API/builtins/integer.md) | [`integer`](../API/builtins/integer.md)[])<a name="transpose"></a>
+### transpose([*self*](../API/builtins/self.md), step : [`integer`](../API/builtins/integer.md) | [`integer`](../API/builtins/integer.md)[`[]`](../API/builtins/array.md)) { #transpose }
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
 > Transpose all note's key values with the specified step value or values.
@@ -52,7 +63,7 @@
 > sequence("c4", "d#5"):transpose(12)
 > sequence(note("c'maj"), note("c'maj")):transpose({0, 5})
 > ```
-### amplify([*self*](../API/builtins/self.md), factor : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="amplify"></a>
+### amplify([*self*](../API/builtins/self.md), factor : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #amplify }
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
 > Multiply all note's volume values with the specified factor or factors.
@@ -64,11 +75,11 @@
 > sequence({"c4 0.5", "g4"}):amplify(0.5)
 > sequence("c'maj 0.5"):amplify({2.0, 1.0, 0.3})
 > ```
-### instrument([*self*](../API/builtins/self.md), instrument : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="instrument"></a>
+### instrument([*self*](../API/builtins/self.md), instrument : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #instrument }
 `->`[`Note`](../API/note.md#Note)  
 
 > Set the instrument attribute of all notes to the specified value or values.
-### volume([*self*](../API/builtins/self.md), volume : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="volume"></a>
+### volume([*self*](../API/builtins/self.md), volume : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #volume }
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
 > Set the volume attribute of all notes to the specified value or values.
@@ -79,14 +90,15 @@
 > sequence("c'maj"):volume(0.5)
 > sequence("c'maj"):volume({0.1, 0.2, 0.3})
 > ```
-### panning([*self*](../API/builtins/self.md), panning : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="panning"></a>
+### panning([*self*](../API/builtins/self.md), panning : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #panning }
 `->`[`Note`](../API/note.md#Note)  
 
 > Set the panning attribute of all notes to the specified value or values.
-### delay([*self*](../API/builtins/self.md), delay : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[])<a name="delay"></a>
+### delay([*self*](../API/builtins/self.md), delay : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #delay }
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
-> Set the delay attribute of all notes to the specified value or values.  
+> Set the delay attribute of all notes to the specified value or values.
+### glide([*self*](../API/builtins/self.md), glide : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #glide }
+`->`[`Sequence`](../API/sequence.md#Sequence)  
 
-
-
+> Set the glide attribute of all notes to the specified value or values.

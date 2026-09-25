@@ -1,6 +1,27 @@
-# pulse
-<!-- toc -->
-# Pulse<a name="Pulse"></a>  
+# pulse  
+* [Pulse](#Pulse)  
+	* [Functions](#functions)  
+		* [new](#new) ([`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), [`PulseTableValue`](#PulseTableValue) |  (index : [`integer`](../API/builtins/integer.md)) `->` [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [from](#from) (...[`PulseTableValue`](#PulseTableValue) | [`PulseTableValue`](#PulseTableValue)[`[]`](../API/builtins/array.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [copy](#copy) ([`Pulse`](../API/pulse.md#Pulse)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [distributed](#distributed) ([`integer`](../API/builtins/integer.md) | [`table`](../API/builtins/table.md), [`integer`](../API/builtins/integer.md), [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [euclidean](#euclidean) ([`integer`](../API/builtins/integer.md) | [`table`](../API/builtins/table.md), [`integer`](../API/builtins/integer.md), [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [unpack](#unpack) ([`Pulse`](../API/pulse.md#Pulse)) `->` [`PulseTableValue`](#PulseTableValue)  
+		* [subrange](#subrange) ([`Pulse`](../API/pulse.md#Pulse), [`integer`](../API/builtins/integer.md), [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [take](#take) ([`Pulse`](../API/pulse.md#Pulse), [`integer`](../API/builtins/integer.md), [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [clear](#clear) ([`Pulse`](../API/pulse.md#Pulse)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [init](#init) ([`Pulse`](../API/pulse.md#Pulse), [`PulseTableValue`](#PulseTableValue) |  (index : [`integer`](../API/builtins/integer.md)) `->` [`PulseTableValue`](#PulseTableValue), [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [map](#map) ([`Pulse`](../API/pulse.md#Pulse),  (index : [`integer`](../API/builtins/integer.md), value : [`PulseTableValue`](#PulseTableValue)) `->` [`PulseTableValue`](#PulseTableValue)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [reverse](#reverse) ([`Pulse`](../API/pulse.md#Pulse)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [rotate](#rotate) ([`Pulse`](../API/pulse.md#Pulse), [`integer`](../API/builtins/integer.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [push_back](#push_back) ([`Pulse`](../API/pulse.md#Pulse), ...[`PulseTableValue`](#PulseTableValue)[`[]`](../API/builtins/array.md) | [`PulseTableValue`](#PulseTableValue)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [pop_back](#pop_back) ([`Pulse`](../API/pulse.md#Pulse)) `->` [`PulseTableValue`](#PulseTableValue)  
+		* [repeat_n](#repeat_n) ([`Pulse`](../API/pulse.md#Pulse), [`integer`](../API/builtins/integer.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [spread](#spread) ([`Pulse`](../API/pulse.md#Pulse), [`number`](../API/builtins/number.md), [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) `->` [`Pulse`](../API/pulse.md#Pulse)  
+		* [tostring](#tostring) ([`Pulse`](../API/pulse.md#Pulse)) `->` [`string`](../API/builtins/string.md)  
+	* [Aliases](#aliases)  
+		* [PulseTableValue](#PulseTableValue)  
+# Pulse { #Pulse }
 > Table with helper functions to ease creating rhythmic patterns.
 > 
 > #### examples:
@@ -32,11 +53,10 @@
 > pulse.from{ 1, 5, 6, 4 }:map(function(index, degree)
 >   return scale("c", "minor"):chord(degree)
 > end)
-> ```  
-
----  
+> ```
+---
 ## Functions
-### new(length : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), value : [`PulseTableValue`](#PulseTableValue) | (index : [`integer`](../API/builtins/integer.md)) `->` [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md))<a name="new"></a>
+### new(length : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), value : [`PulseTableValue`](#PulseTableValue) |  (index : [`integer`](../API/builtins/integer.md)) `->` [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) { #new }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Create a new empty pulse table or a pulse table with the given length and value.
@@ -48,7 +68,7 @@
 > pulse.new(4, 1) --> {1,1,1,1}
 > pulse.new(4, function() return math.random() end)
 > ```
-### from(...[`PulseTableValue`](#PulseTableValue) | [`PulseTableValue`](#PulseTableValue)[])<a name="from"></a>
+### from(...[`PulseTableValue`](#PulseTableValue) | [`PulseTableValue`](#PulseTableValue)[`[]`](../API/builtins/array.md)) { #from }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Create a new pulse table from an existing set of values or tables.
@@ -59,7 +79,7 @@
 > pulse.from(1,0,1,0) --> {1,0,1,0}
 > pulse.from({1,0},{1,0}) --> {1,0,1,0}
 > ```
-### copy(self : [`Pulse`](../API/pulse.md#Pulse))<a name="copy"></a>
+### copy(self : [`Pulse`](../API/pulse.md#Pulse)) { #copy }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 >  create a shallow-copy of the given pulse table (or self)
@@ -69,7 +89,7 @@
 > local p = pulse.from(1, 0)
 > local p2 = p:copy() --> {1,0}
 > ```
-### distributed(steps : [`integer`](../API/builtins/integer.md) | [`table`](../API/builtins/table.md), length : [`integer`](../API/builtins/integer.md), offset : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md))<a name="distributed"></a>
+### distributed(steps : [`integer`](../API/builtins/integer.md) | [`table`](../API/builtins/table.md), length : [`integer`](../API/builtins/integer.md), offset : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) { #distributed }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Create an new pulse table or spread and existing pulse evenly within the given length.
@@ -82,7 +102,7 @@
 > pulse.distributed(3, 8) --> {1,0,0,1,0,1,0}
 > pulse.from{1,1}:distributed(4, 1) --> {0,1,0,1}
 > ```
-### euclidean(steps : [`integer`](../API/builtins/integer.md) | [`table`](../API/builtins/table.md), length : [`integer`](../API/builtins/integer.md), offset : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md))<a name="euclidean"></a>
+### euclidean(steps : [`integer`](../API/builtins/integer.md) | [`table`](../API/builtins/table.md), length : [`integer`](../API/builtins/integer.md), offset : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) { #euclidean }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Create a new euclidean rhythm pulse table with the given pulses or number of new pulses
@@ -96,7 +116,7 @@
 > pulse.from{"x", "x", "x"}:euclidean(8, 0, "-")
 >  --> {"x","-","-","x","-","-","x","-"}
 > ```
-### unpack(self : [`Pulse`](../API/pulse.md#Pulse))<a name="unpack"></a>
+### unpack(self : [`Pulse`](../API/pulse.md#Pulse)) { #unpack }
 `->`... : [`PulseTableValue`](#PulseTableValue)  
 
 > Shortcut for table.unpack(pulse): returns elements from this pulse as var args.
@@ -106,7 +126,7 @@
 > local p = pulse.from{1,2,3,4}
 > local v1, v2, v3, v4 = p:unpack()
 > ```
-### subrange(self : [`Pulse`](../API/pulse.md#Pulse), i : [`integer`](../API/builtins/integer.md), j : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md))<a name="subrange"></a>
+### subrange(self : [`Pulse`](../API/pulse.md#Pulse), i : [`integer`](../API/builtins/integer.md), j : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) { #subrange }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Fetch a sub-range from the pulse table as new pulse table.
@@ -118,7 +138,7 @@
 > p = p:subrange(2,3) --> {2,3}
 > p = p:subrange(1,4,"X") --> {2,3,"X","X"}
 > ```
-### take(self : [`Pulse`](../API/pulse.md#Pulse), length : [`integer`](../API/builtins/integer.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md))<a name="take"></a>
+### take(self : [`Pulse`](../API/pulse.md#Pulse), length : [`integer`](../API/builtins/integer.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) { #take }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Get first n items from the pulse as new pulse table.
@@ -130,7 +150,7 @@
 > p = p:take(2) --> {1,2}
 > p = p:take(4, "") --> {1,2,"",""}
 > ```
-### clear(self : [`Pulse`](../API/pulse.md#Pulse))<a name="clear"></a>
+### clear(self : [`Pulse`](../API/pulse.md#Pulse)) { #clear }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Clear a pulse table, remove all its contents.
@@ -140,7 +160,7 @@
 > local p = pulse.from{1,0}
 > p:clear() --> {}
 > ```
-### init(self : [`Pulse`](../API/pulse.md#Pulse), value : [`PulseTableValue`](#PulseTableValue) | (index : [`integer`](../API/builtins/integer.md)) `->` [`PulseTableValue`](#PulseTableValue), length : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md))<a name="init"></a>
+### init(self : [`Pulse`](../API/pulse.md#Pulse), value : [`PulseTableValue`](#PulseTableValue) |  (index : [`integer`](../API/builtins/integer.md)) `->` [`PulseTableValue`](#PulseTableValue), length : [`integer`](../API/builtins/integer.md)[`?`](../API/builtins/nil.md)) { #init }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Fill pulse table with the given value or generator function in the given length.
@@ -152,7 +172,7 @@
 > p:init("X", 3) --> {"X","X", "X"}
 > p:init(function(i) return math.random() end, 3)
 > ```
-### map(self : [`Pulse`](../API/pulse.md#Pulse), fun : (index : [`integer`](../API/builtins/integer.md), value : [`PulseTableValue`](#PulseTableValue)) `->` [`PulseTableValue`](#PulseTableValue))<a name="map"></a>
+### map(self : [`Pulse`](../API/pulse.md#Pulse), fun :  (index : [`integer`](../API/builtins/integer.md), value : [`PulseTableValue`](#PulseTableValue)) `->` [`PulseTableValue`](#PulseTableValue)) { #map }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Apply the given function to every item in the pulse table.
@@ -164,7 +184,7 @@
 >   return scale("c", "minor"):degree(v)
 > end) --> {48, 51, 55}
 > ```
-### reverse(self : [`Pulse`](../API/pulse.md#Pulse))<a name="reverse"></a>
+### reverse(self : [`Pulse`](../API/pulse.md#Pulse)) { #reverse }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Invert the order of items in the pulse table.
@@ -174,7 +194,7 @@
 > local p = pulse.from{1,2,3}
 > p:reverse() --> {3,2,1}
 > ```
-### rotate(self : [`Pulse`](../API/pulse.md#Pulse), amount : [`integer`](../API/builtins/integer.md))<a name="rotate"></a>
+### rotate(self : [`Pulse`](../API/pulse.md#Pulse), amount : [`integer`](../API/builtins/integer.md)) { #rotate }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Shift contents by the given amount to the left (negative amount) or right.
@@ -185,7 +205,7 @@
 > p:rotate(1) --> {0,1,0}
 > p:rotate(-2) --> {0,0,1}
 > ```
-### push_back(self : [`Pulse`](../API/pulse.md#Pulse), ...[`PulseTableValue`](#PulseTableValue)[] | [`PulseTableValue`](#PulseTableValue))<a name="push_back"></a>
+### push_back(self : [`Pulse`](../API/pulse.md#Pulse), ...[`PulseTableValue`](#PulseTableValue)[`[]`](../API/builtins/array.md) | [`PulseTableValue`](#PulseTableValue)) { #push_back }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Push a single or multiple items or other pulse contents to the end of the pulse.
@@ -199,7 +219,7 @@
 > p:push_back{4} --> {1,2,3,4}
 > p:push_back({5,{6,7}) --> {1,2,3,4,5,6,7}
 > ```
-### pop_back(self : [`Pulse`](../API/pulse.md#Pulse))<a name="pop_back"></a>
+### pop_back(self : [`Pulse`](../API/pulse.md#Pulse)) { #pop_back }
 `->`[`PulseTableValue`](#PulseTableValue)  
 
 > Remove an entry from the back of the pulse table. returns the removed item.
@@ -211,7 +231,7 @@
 > p:pop_back() --> {}
 > p:pop_back() --> {}
 > ```
-### repeat_n(self : [`Pulse`](../API/pulse.md#Pulse), count : [`integer`](../API/builtins/integer.md))<a name="repeat_n"></a>
+### repeat_n(self : [`Pulse`](../API/pulse.md#Pulse), count : [`integer`](../API/builtins/integer.md)) { #repeat_n }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Repeat contents of the pulse table n times.
@@ -221,7 +241,7 @@
 > local p = pulse.from{1,2,3}
 > patterns:repeat_n(2) --> {1,2,3,1,2,3}
 > ```
-### spread(self : [`Pulse`](../API/pulse.md#Pulse), amount : [`number`](../API/builtins/number.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md))<a name="spread"></a>
+### spread(self : [`Pulse`](../API/pulse.md#Pulse), amount : [`number`](../API/builtins/number.md), empty_value : [`PulseTableValue`](#PulseTableValue)[`?`](../API/builtins/nil.md)) { #spread }
 `->`[`Pulse`](../API/pulse.md#Pulse)  
 
 > Expand (with amount > 1) or shrink (amount < 1) the length of the pulse table by
@@ -234,7 +254,7 @@
 > p:spread(2) --> {1,0,1,0}
 > p:spread(1/2) --> {1,1}
 > ```
-### tostring(self : [`Pulse`](../API/pulse.md#Pulse))<a name="tostring"></a>
+### tostring(self : [`Pulse`](../API/pulse.md#Pulse)) { #tostring }
 `->`[`string`](../API/builtins/string.md)  
 
 > Serialze a pulse table for display/debugging purposes.
@@ -242,16 +262,12 @@
 > #### examples:
 > ```lua
 > pulse.euclidean(3, 8):tostring() --> "{1, 0, 0, 1, 0, 0, 1, 0}"
-> ```  
-
-
-
----  
-## Aliases  
-### PulseTableValue<a name="PulseTableValue"></a>
+> ```
+---
+# Aliases
+---
+---
+### PulseTableValue { #PulseTableValue }
 [`boolean`](../API/builtins/boolean.md) | [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md) | [`table`](../API/builtins/table.md)  
-> Valid pulse value in a pulse table  
-  
-
-
-
+> Valid pulse value in a pulse table
+---

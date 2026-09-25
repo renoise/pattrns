@@ -22,7 +22,13 @@ jobs:
           cache-key: "pattrns-pages"
 
       - name: Install mdbook
-        run: cargo install mdbook@0.4.51 mdbook-linkcheck@0.7.5 mdbook-toc@0.14.2 mdbook-alerts@0.8.0
+        run: cargo install mdbook@^0.5
+        
+      - name: Validate links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs" docs
+          fail: true
 
       - name: Generate API
         run: cd docs && cargo run

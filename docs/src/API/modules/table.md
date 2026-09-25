@@ -1,8 +1,7 @@
-# table<a name="table"></a>  
-
----  
+# table { #table }
+---
 ## Functions
-### `new()`<a name="new"></a>
+### `new()` { #new }
 `->`[`table`](../../API/builtins/table.md) | tablelib  
 
 > Create a new empty table that uses the global 'table.XXX' functions as methods, just like
@@ -12,7 +11,7 @@
 > ```lua
 > t = table.new(); t:insert("a"); print(t[1]) -> "a";
 > ```
-### from(t : [`table`](../../API/builtins/table.md))<a name="from"></a>
+### from(t : [`table`](../../API/builtins/table.md)) { #from }
 `->`[`table`](../../API/builtins/table.md) | tablelib  
 
 > Create a new empty table, or convert an exiting table to an object that uses the global
@@ -22,7 +21,7 @@
 > ```lua
 > t = table.from{1,2,3}; print(t:concat("|")); -> "1|2|3";
 > ```
-### contains(t : [`table`](../../API/builtins/table.md), value : [`any`](../../API/builtins/any.md), start_index : [`integer`](../../API/builtins/integer.md)[`?`](../../API/builtins/nil.md))<a name="contains"></a>
+### contains(t : [`table`](../../API/builtins/table.md), value : [`any`](../../API/builtins/any.md), start_index : [`integer`](../../API/builtins/integer.md)[`?`](../../API/builtins/nil.md)) { #contains }
 `->`[`boolean`](../../API/builtins/boolean.md)  
 
 > Test if the table contains an entry matching the given value,
@@ -34,7 +33,7 @@
 > t = {a=1, b=2}; table.contains(t, 2) --> true
 > t = {"a", "b"}; table.contains(t, "c") --> false
 > ```
-### find(t : [`table`](../../API/builtins/table.md), value : [`any`](../../API/builtins/any.md), start_index : [`integer`](../../API/builtins/integer.md)[`?`](../../API/builtins/nil.md))<a name="find"></a>
+### find(t : [`table`](../../API/builtins/table.md), value : [`any`](../../API/builtins/any.md), start_index : [`integer`](../../API/builtins/integer.md)[`?`](../../API/builtins/nil.md)) { #find }
 `->`key : [`any`](../../API/builtins/any.md)  
 
 > Finds the key of the first element matching `value`.
@@ -50,13 +49,12 @@
 > t = {"a", "b", "a"}; table.find(t, "a", 2) --> 3
 > t = {"a", "b"}; table.find(t, "c") --> nil
 > ```
-### tostring(t : [`table`](../../API/builtins/table.md))<a name="tostring"></a>
+### tostring(t : [`table`](../../API/builtins/table.md)) { #tostring }
 `->`[`string`](../../API/builtins/string.md)  
 
 > Serialize a table to a string for display/debugging purposes.
-### copy(t : [`table`](../../API/builtins/table.md))<a name="copy"></a>
+### copy(t : [`table`](../../API/builtins/table.md)) { #copy }
 `->`[`table`](../../API/builtins/table.md)  
 
 > Copy the metatable and all elements non recursively into a new table.
-> Creates a clone with shared references.  
-
+> Creates a clone with shared references.
