@@ -1,3 +1,5 @@
 Cargo.lock
 /out/
 /target/
+/src/API/*
+!/src/API/README.md
