@@ -131,7 +131,6 @@ impl LuaUserData for Scale {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::bindings::*;
 
     fn new_test_engine() -> LuaResult<Lua> {

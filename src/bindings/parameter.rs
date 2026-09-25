@@ -16,7 +16,6 @@ impl LuaUserData for ParameterUserData {}
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::bindings::*;
 
     fn new_test_engine() -> LuaResult<Lua> {
