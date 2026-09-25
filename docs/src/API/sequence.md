@@ -14,7 +14,6 @@
 		* [volume](#volume) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
 		* [panning](#panning) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
 		* [delay](#delay) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
-		* [glide](#glide) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Sequence`](../API/sequence.md#Sequence)  
 # global { #global }
 ---
 ## Functions
@@ -32,10 +31,6 @@
 > sequence(48, "c5", {})
 > -- sequence of a +5 transposed C4 and G4 major chord
 > sequence("c4'maj", "g4'maj"):transpose(5)
-> -- glide from c4 to e4
-> sequence{"c4", "e4 g1.0"}
-> -- glide from c4 to e4 in half of the step time
-> sequence{"c4", "e4 g0.5"}
 >  ```
 ---
 # Aliases
@@ -98,7 +93,3 @@
 `->`[`Sequence`](../API/sequence.md#Sequence)  
 
 > Set the delay attribute of all notes to the specified value or values.
-### glide([*self*](../API/builtins/self.md), glide : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #glide }
-`->`[`Sequence`](../API/sequence.md#Sequence)  
-
-> Set the glide attribute of all notes to the specified value or values.

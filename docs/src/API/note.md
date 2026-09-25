@@ -15,7 +15,6 @@
 		* [instrument](#instrument) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
 		* [panning](#panning) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
 		* [delay](#delay) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
-		* [glide](#glide) ([*self*](../API/builtins/self.md), [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) `->` [`Note`](../API/note.md#Note)  
 * [NoteTable](#NoteTable)  
 	* [Properties](#properties)  
 		* [key](#key) : [`string`](../API/builtins/string.md) | [`number`](../API/builtins/number.md)  
@@ -125,11 +124,7 @@
 ### delay([*self*](../API/builtins/self.md), delay : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #delay }
 `->`[`Note`](../API/note.md#Note)  
 
-> Set the note's delay attribute to the specified value or values.
-### glide([*self*](../API/builtins/self.md), glide : [`number`](../API/builtins/number.md) | [`number`](../API/builtins/number.md)[`[]`](../API/builtins/array.md)) { #glide }
-`->`[`Note`](../API/note.md#Note)  
-
-> Set the note's glide attribute to the specified value or values.  
+> Set the note's delay attribute to the specified value or values.  
 # NoteTable { #NoteTable }
 ---
 ## Properties
