@@ -32,7 +32,6 @@ Key symbols to know:
 | `_`    | Elongate                         | `c4 _ d4`           |
 | `~`    | Rest                             | `c4 ~ d4`           |
 
-<br>
 
 > [!TIP]
 > Please see [Tidal Cycles Mini-Notation Reference](https://tidalcycles.org/docs/reference/mini_notation/) for a complete overview of the cycle notation.
@@ -139,7 +138,9 @@ Supported note attributes are:
 - Panning: `:pX` - with X \[-1.0 to 1.0\] 
 - Delay: `:dX` - with X \[0.0-1.0\)
 
-Note that `X` must be written as *floating point number* for volume, panning and delay:</br> `c4:p-1.0` and `c4:p.8` is valid, while `c4:p-1` **is not valid**!
+> [!WARNING]
+> `X` must be written as *floating point number* for volume, panning and delay:  
+> `c4:p-1.0` and `c4:p.8` is valid, while `c4:p-1` **is not valid**!
 
 If you want to use expressions (like slowing down) for an attribute pattern on the right side, you'll have to wrap it in square brackets, otherwise the expression applies to the entire pattern, not just the attributes'.
 

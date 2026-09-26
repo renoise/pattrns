@@ -1,7 +1,6 @@
 [book]
 authors = ["mail@emuell.net"]
 language = "en"
-multilingual = false
 src = "src"
 title = "pattrns"
 
@@ -9,17 +8,10 @@ title = "pattrns"
 build-dir = "out"
 create-missing = false
 
-[preprocessor.alerts]
-[preprocessor.toc]
-max-level = 3
-
 [output.html]
 default-theme = "dark"
 preferred-dark-theme = "ayu"
 git-repository-url = "https://github.com/renoise/pattrns"
-git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/emuell/pattrns/edit/master/docs/{path}"
-additional-css = [ "src/styles.css" ]
-
-[output.linkcheck]
-warning-policy = "ignore"
+additional-css = ["src/styles.css"]
+sidebar-header-nav = false
