@@ -6,7 +6,7 @@
 The documentations are generated with [mdBook](https://github.com/rust-lang/mdBook). To preview the pages locally, you need [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) to install mdbook:
 
 ```sh
-cargo install mdbook^0.5
+cargo install mdbook@^0.5
 ```
 
 Or use [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) to avoid compiling the binaries.
