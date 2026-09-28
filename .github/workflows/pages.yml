@@ -27,7 +27,7 @@ jobs:
       - name: Validate links
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs" docs
+          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs/out" docs/out
           fail: true
 
       - name: Generate API
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           name: github-pages
-          path: ./docs/out/html
+          path: ./docs/out
           
   deploy:
     # Add a dependency to the build job
