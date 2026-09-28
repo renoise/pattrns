@@ -22,4 +22,4 @@ All content in patterns can be either **static** or **dynamic**:
 
 See [Quickstart](../quickstart.md) for a set of simple examples to start and to play around with. 
 
-The [Examples](../examples/README.md) section contains more advanced and guided examples. 
+The [Examples](../examples/) section contains more advanced and guided examples. 
