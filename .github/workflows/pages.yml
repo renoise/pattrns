@@ -24,17 +24,17 @@ jobs:
       - name: Install mdbook
         run: cargo install mdbook@^0.5
         
-      - name: Validate links
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs/out" docs/out
-          fail: true
-
       - name: Generate API
         run: cd docs && cargo run
 
       - name: Build Book
         run: cd docs && mdbook build
+
+      - name: Validate links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs/out" docs/out
+          fail: true
 
       - name: Upload
         uses: actions/upload-pages-artifact@v3
