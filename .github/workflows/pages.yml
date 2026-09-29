@@ -26,7 +26,7 @@ jobs:
       - name: Setup mdbook
         uses: peaceiris/actions-mdbook@v2
         with:
-          mdbook-version: "0.5.x"
+          mdbook-version: "latest"
 
       - name: Generate API
         run: cd docs && cargo run
