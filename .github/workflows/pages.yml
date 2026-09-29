@@ -1,12 +1,7 @@
 name: Build & Deploy Docs
 
 on:
-  push:
-    branches: ["master"]
-  pull_request:
-    branches: ["master"]
-  # allow running the workflow from the actions tab
-  workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:

@@ -34,3 +34,7 @@ jobs:
   benchmark:
     needs: build
     uses: ./.github/workflows/benchmark.yml
+
+  pages:
+    needs: build
+    uses: ./.github/workflows/pages.yml
