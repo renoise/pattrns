@@ -5,6 +5,7 @@ on:
     branches: ["master"]
   pull_request:
     branches: ["master"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,8 +36,20 @@ jobs:
 
   benchmark:
     needs: build
-    uses: ./.github/workflows/benchmark.yml
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
-  pages:
-    needs: build
-    uses: ./.github/workflows/pages.yml
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-key: "pattrns-build"
+
+      - name: Benchmark
+        uses: boa-dev/criterion-compare-action@v3
+        with:
+          branchName: ${{ github.base_ref }}

@@ -1,11 +1,11 @@
 name: Build & Deploy Docs
 
 on:
-  workflow_call:
-
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,9 +18,6 @@ jobs:
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v2
-        with:
-          cache-workspaces: "docs"
-          cache-key: "pattrns-pages"
 
       - name: Setup mdbook
         uses: peaceiris/actions-mdbook@v2
