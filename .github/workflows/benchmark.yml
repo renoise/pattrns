@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows: ["Build & Test"]
     types: [ completed ]
-    branches: [ "master" ]
 
 env:
   CARGO_TERM_COLOR: always
