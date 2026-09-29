@@ -1,14 +1,17 @@
 name: Benchmark
 
 on:
-  pull_request:
+  workflow_run:
+    workflows: ["Build & Test"]
+    types: [ completed ]
     branches: [ "master" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  runBenchmark:
+  benchmark:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,6 +21,8 @@ jobs:
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-key: "pattrns-build"
 
       - name: Benchmark
         uses: boa-dev/criterion-compare-action@v3

@@ -20,6 +20,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: clippy
+          cache-key: "pattrns-build"
 
       - name: Build
         run: cargo build --verbose
