@@ -37,14 +37,14 @@ jobs:
 
       - name: Upload
         uses: actions/upload-pages-artifact@v4
-        if: github.event_name == 'push' && github.ref_name == 'master'
+        if: github.ref_name == 'master'
         with:
           path: ./docs/out
 
   deploy:
     # Add a dependency to the build job
     needs: build
-    if: github.event_name == 'push' && github.ref_name == 'master'
+    if: github.ref_name == 'master'
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
