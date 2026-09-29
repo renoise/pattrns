@@ -2,7 +2,9 @@ name: Build & Deploy Docs
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
   # allow running the workflow from the actions tab
   workflow_dispatch:
 
@@ -11,19 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with: 
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
           cache-workspaces: "docs"
           cache-key: "pattrns-pages"
 
-      - name: Install mdbook
-        run: cargo install mdbook@^0.5
-        
+      - name: Setup mdbook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "0.5.x"
+
       - name: Generate API
         run: cd docs && cargo run
 
@@ -37,19 +41,20 @@ jobs:
           fail: true
 
       - name: Upload
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
+        if: github.event_name == 'push' && github.ref_name == 'master'
         with:
-          name: github-pages
           path: ./docs/out
-          
+
   deploy:
     # Add a dependency to the build job
     needs: build
+    if: github.event_name == 'push' && github.ref_name == 'master'
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
+      pages: write # to deploy to Pages
+      id-token: write # to verify the deployment originates from an appropriate source
 
     # Deploy to the github-pages environment
     environment:

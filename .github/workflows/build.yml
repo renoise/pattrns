@@ -17,10 +17,15 @@ jobs:
           submodules: recursive
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy
 
       - name: Build
         run: cargo build --verbose
+
+      - name: Clippy
+        run: cargo clippy --verbose -- -D warnings
       
       - name: Run tests
         run: cargo test --verbose
