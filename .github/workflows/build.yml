@@ -30,3 +30,7 @@ jobs:
       
       - name: Run tests
         run: cargo test --verbose
+
+  benchmark:
+    needs: build
+    uses: ./.github/workflows/benchmark.yml

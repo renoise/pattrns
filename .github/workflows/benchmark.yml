@@ -1,9 +1,7 @@
 name: Benchmark
 
 on:
-  workflow_run:
-    workflows: ["build"]
-    types: [ completed ]
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
