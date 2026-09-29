@@ -201,8 +201,8 @@ impl Chord {
     pub fn unique_names() -> Vec<String> {
         let mut unique_chords = CHORD_TABLE.iter().collect::<Vec<_>>();
         // prefer longer names, then dedup
-        unique_chords.sort_by(|(an, _), (bn, _)| bn.len().cmp(&an.len()));
-        unique_chords.sort_by(|(_, ai), (_, bi)| ai.cmp(bi));
+        unique_chords.sort_by_key(|(an, _)| std::cmp::Reverse(an.len()));
+        unique_chords.sort_by_key(|(_, ai)| *ai);
         // dedup, but keep add/dom duplicates
         unique_chords.dedup_by(|(an, ai), (_, bi)| {
             ai == bi && !(an.starts_with("dom") || an.starts_with("add"))

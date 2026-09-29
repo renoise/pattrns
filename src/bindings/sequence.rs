@@ -77,7 +77,7 @@ impl LuaUserData for SequenceUserData {
             |lua, (ud, volume): (LuaAnyUserData, LuaValue)| {
                 let mut this = ud.borrow_mut::<Self>()?;
                 let steps = transpose_steps_array_from_value(lua, volume, this.notes.len())?;
-                for (notes, step) in this.notes.iter_mut().zip(steps.into_iter()) {
+                for (notes, step) in this.notes.iter_mut().zip(steps) {
                     for note in notes.iter_mut().flatten() {
                         if note.note.is_note_on() {
                             let transposed_note =

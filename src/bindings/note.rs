@@ -95,7 +95,7 @@ impl LuaUserData for NoteUserData {
             |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
                 let mut this = ud.borrow_mut::<Self>()?;
                 let steps = transpose_steps_array_from_value(lua, value, this.notes.len())?;
-                for (note, step) in this.notes.iter_mut().zip(steps.into_iter()) {
+                for (note, step) in this.notes.iter_mut().zip(steps) {
                     if let Some(note) = note {
                         if note.note.is_note_on() {
                             let transposed_note =
@@ -112,7 +112,7 @@ impl LuaUserData for NoteUserData {
         methods.add_function("amplify", |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
             let mut this = ud.borrow_mut::<Self>()?;
             let volumes = amplify_array_from_value(lua, value, this.notes.len())?;
-            for (note, volume) in this.notes.iter_mut().zip(volumes.into_iter()) {
+            for (note, volume) in this.notes.iter_mut().zip(volumes) {
                 if volume < 0.0 {
                     return Err(bad_argument_error(
                         "amplify",
@@ -134,7 +134,7 @@ impl LuaUserData for NoteUserData {
             |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
                 let mut this = ud.borrow_mut::<Self>()?;
                 let instruments = instrument_array_from_value(lua, value, this.notes.len())?;
-                for (note, instrument) in this.notes.iter_mut().zip(instruments.into_iter()) {
+                for (note, instrument) in this.notes.iter_mut().zip(instruments) {
                     if instrument < 0 {
                         return Err(bad_argument_error(
                             "instrument",
@@ -155,7 +155,7 @@ impl LuaUserData for NoteUserData {
         methods.add_function("volume", |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
             let mut this = ud.borrow_mut::<Self>()?;
             let volumes = volume_array_from_value(lua, value, this.notes.len())?;
-            for (note, volume) in this.notes.iter_mut().zip(volumes.into_iter()) {
+            for (note, volume) in this.notes.iter_mut().zip(volumes) {
                 if !(0.0..=1.0).contains(&volume) {
                     return Err(bad_argument_error(
                         "volume",
@@ -175,7 +175,7 @@ impl LuaUserData for NoteUserData {
         methods.add_function("panning", |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
             let mut this = ud.borrow_mut::<Self>()?;
             let pannings = panning_array_from_value(lua, value, this.notes.len())?;
-            for (note, panning) in this.notes.iter_mut().zip(pannings.into_iter()) {
+            for (note, panning) in this.notes.iter_mut().zip(pannings) {
                 if !(-1.0..=1.0).contains(&panning) {
                     return Err(bad_argument_error(
                         "panning",
@@ -195,7 +195,7 @@ impl LuaUserData for NoteUserData {
         methods.add_function("delay", |lua, (ud, value): (LuaAnyUserData, LuaValue)| {
             let mut this = ud.borrow_mut::<Self>()?;
             let delays = delay_array_from_value(lua, value, this.notes.len())?;
-            for (note, delay) in this.notes.iter_mut().zip(delays.into_iter()) {
+            for (note, delay) in this.notes.iter_mut().zip(delays) {
                 if !(0.0..=1.0).contains(&delay) {
                     return Err(bad_argument_error(
                         "delay",
