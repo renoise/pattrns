@@ -34,9 +34,26 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  benchmark:
+  check-changes:
+    runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            src:
+              - './src/**/*.rs'
+              - './benches/**/*.rs'
+              - './Cargo.toml'
+
+  benchmark:
+    needs: check-changes
+    if: ${{ needs.check-changes.outputs.changed == 'true' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
