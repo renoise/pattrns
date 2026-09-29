@@ -1,9 +1,11 @@
 name: Build & Test
 
 on:
+  push:
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
-    
+    branches: ["master"]
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -27,7 +29,7 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --verbose -- -D warnings
-      
+
       - name: Run tests
         run: cargo test --verbose
 
