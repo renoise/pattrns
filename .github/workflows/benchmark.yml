@@ -2,7 +2,7 @@ name: Benchmark
 
 on:
   workflow_call:
-    
+
 concurrency:
   group: benchmarks-${{ github.ref }}
   cancel-in-progress: true
