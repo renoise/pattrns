@@ -2,33 +2,35 @@ name: Build & Deploy Docs
 
 on:
   push:
-    branches: [ "master" ]
-  # allow running the workflow from the actions tab
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
   workflow_dispatch:
 
+# Queue deployments, but never cancel one in progress
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  # Build API docs and the mdbook
+  docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with: 
-          cache-workspaces: "docs"
-          cache-key: "pattrns-pages"
-
-      - name: Install mdbook
-        run: cargo install mdbook@^0.5
-        
-      - name: Validate links
-        uses: lycheeverse/lychee-action@v2
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs/out" docs/out
-          fail: true
+          cache-workspaces: "docs"
+
+      - name: Setup mdbook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "latest"
 
       - name: Generate API
         run: cd docs && cargo run
@@ -36,20 +38,27 @@ jobs:
       - name: Build Book
         run: cd docs && mdbook build
 
-      - name: Upload
-        uses: actions/upload-pages-artifact@v3
+      - name: Validate links
+        uses: lycheeverse/lychee-action@v2
         with:
-          name: github-pages
+          args: --no-progress --offline --root-dir "$GITHUB_WORKSPACE/docs/out" docs/out
+          fail: true
+
+      - name: Upload
+        uses: actions/upload-pages-artifact@v5
+        if: github.ref_name == 'master'
+        with:
           path: ./docs/out
-          
+
+  # Deploy artifact built by the docs job
   deploy:
-    # Add a dependency to the build job
-    needs: build
+    needs: docs
+    if: github.ref_name == 'master'
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
+      pages: write # to deploy to Pages
+      id-token: write # to verify the deployment originates from an appropriate source
 
     # Deploy to the github-pages environment
     environment:
@@ -61,4 +70,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

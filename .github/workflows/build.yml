@@ -1,26 +1,71 @@
 name: Build & Test
 
 on:
+  push:
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
-    
-env:
-  CARGO_TERM_COLOR: always
+    branches: ["master"]
+  workflow_dispatch:
 
 jobs:
+  # Build and run tests
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy
 
       - name: Build
         run: cargo build --verbose
-      
+
+      - name: Clippy
+        run: cargo clippy --verbose -- -D warnings
+
       - name: Run tests
         run: cargo test --verbose
+
+  # Check for benchmark related changes
+  check-changes:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            src:
+              - benches/**/*.rs
+              - src/**/*.rs
+              - types/**/*.lua
+              - Cargo.toml
+
+  # Run benchmark
+  benchmark:
+    needs: check-changes
+    if: needs.check-changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - name: Benchmark
+        uses: boa-dev/criterion-compare-action@v3
+        with:
+          branchName: ${{ github.base_ref }}
