@@ -7,8 +7,14 @@ on:
     branches: ["master"]
   workflow_dispatch:
 
+# Queue deployments, but never cancel one in progress
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  # Build API docs and the mdbook
+  docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,6 +24,8 @@ jobs:
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-workspaces: "docs"
 
       - name: Setup mdbook
         uses: peaceiris/actions-mdbook@v2
@@ -42,9 +50,9 @@ jobs:
         with:
           path: ./docs/out
 
+  # Deploy artifact built by the docs job
   deploy:
-    # Add a dependency to the build job
-    needs: build
+    needs: docs
     if: github.ref_name == 'master'
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
