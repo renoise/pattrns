@@ -175,7 +175,7 @@ impl Sequence {
     fn samples_until_next_phrase(&self, time: u64) -> (u64, u64) {
         if let Some(phrase) = self.current_phrase() {
             let phrase_length_in_samples =
-                phrase.length().to_samples(&self.time_base) as SampleTime;
+                phrase.length().to_samples(&self.time_base).ceil() as SampleTime;
             let next_phrase_start =
                 phrase_length_in_samples.saturating_sub(self.sample_position_in_phrase);
             let samples_to_run = time - self.sample_position;
