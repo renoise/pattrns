@@ -494,10 +494,8 @@ impl Scale {
 
     fn degree_to_step(&self, degree: usize) -> usize {
         assert!((1..=12).contains(&degree), "Degree out of bounds");
-        for i in 0..12 {
-            if self.mode.degrees[i] == degree {
-                return i;
-            }
+        if let Some(position) = self.mode.degrees.iter().position(|d| *d == degree) {
+            return position;
         }
         unreachable!("Invalid degree value in scale.")
     }
@@ -550,8 +548,8 @@ impl Scale {
             let whole_octaves = quantized_offset / 12;
             degree_diff += whole_octaves * num_degrees as i32;
             let mut remainder = quantized_offset % 12;
-            for i in 1..12 {
-                if self.mode.degrees[i] != 0 {
+            for degree in &self.mode.degrees[1..] {
+                if *degree != 0 {
                     remainder -= 1;
                     if remainder > 0 {
                         degree_diff += 1;
