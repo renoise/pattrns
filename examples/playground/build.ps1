@@ -26,7 +26,7 @@ $ErrorActionPreference = "Stop"
 
 # Emscripten pthread need atomics and bulk-memory features target features.
 # all other emscripten linker flags are specified in `build.rs`
-# `panic=abort` helps trimming down the generated code in size. With abort, 
+# `panic=abort` helps trimming down the generated code in size. With abort,
 # errors are actually also better traceable in debug builds...
 $env:RUSTFLAGS = "-Ctarget-feature=+atomics,+bulk-memory -Cpanic=abort"
 
@@ -38,9 +38,34 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Copy build artifacts to the web folder.
-$extensions = @("wasm", "js", "data")
-foreach ($ext in $extensions) {
-    $sourcePath = "target\wasm32-unknown-emscripten\$TargetDir\deps\playground.$ext"
-    $destPath = "web\playground.$ext"
-    Copy-Item $sourcePath $destPath -Force
+# Note: Cargo copies the .js/.wasm artifacts to the profile dir, or "deps" in older versions.
+$targetPath = "target\wasm32-unknown-emscripten\$TargetDir"
+function Copy-Artifact($Ext) {
+    $sources = @(
+        "$targetPath\playground.$Ext",
+        "$targetPath\deps\playground.$Ext"
+    )
+    foreach ($source in $sources) {
+        try {
+            Copy-Item $source "web\playground.$Ext" -Force -ErrorAction Stop
+            return
+        } catch {
+            # try next
+        }
+    }
+    Write-Error "playground.$Ext not found"
+    exit 1
 }
+
+foreach ($ext in @("wasm", "js")) {
+    Copy-Artifact $ext
+}
+
+# The emscripten --preload-file sidecar stays in the linker output dir.
+$data = Get-ChildItem -Path "$targetPath\build\playground\*\out\playground.data" -File -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if (-not $data) {
+    Write-Error "playground.data not found"
+    exit 1
+}
+Copy-Item $data.FullName "web\playground.data" -Force
