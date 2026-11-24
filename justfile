@@ -5,7 +5,7 @@ default: build
 build:
     cargo build --release
 run:
-    cargo run --release --example=play-script --features=player
+    cargo run --release --example=play-script --features=player,cpal-output
 
 pg-build:
     cd examples/playground && ./build.sh
