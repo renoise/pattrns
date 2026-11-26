@@ -1064,9 +1064,6 @@ impl Events {
 
     /// Recursively collapses Multi and Poly Events into vectors of Single Events
     fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
-        if channels.len() <= *channel {
-            channels.push(vec![])
-        }
         match self {
             Events::Single(s) => channels[*channel].push(s.clone()),
             Events::Multi(m) => {
@@ -1075,9 +1072,13 @@ impl Events {
                 }
             }
             Events::Poly(p) => {
-                for e in &p.channels {
+                let last = p.channels.len().saturating_sub(1);
+                for (i, e) in p.channels.iter().enumerate() {
                     e.flatten(channels, channel);
-                    *channel += 1
+                    if i != last {
+                        channels.push(vec![]);
+                        *channel += 1;
+                    }
                 }
             }
         }
@@ -1135,7 +1136,7 @@ impl Events {
     }
 
     fn export(&self) -> Vec<Vec<Event>> {
-        let mut channels = vec![];
+        let mut channels = vec![vec![]];
         self.flatten(&mut channels, &mut 0);
         Self::merge(&mut channels);
         channels.retain(|c| !c.is_empty());
@@ -1806,7 +1807,7 @@ impl Cycle {
     ) -> Result<(Vec<Vec<Event>>, Span), String> {
         let mut events = Self::output(step, state, cycle, limit, true)?;
         events.transform_spans(&events.get_span());
-        let mut channels = vec![];
+        let mut channels = vec![vec![]];
         events.flatten(&mut channels, &mut 0);
         Events::merge(&mut channels);
         Ok((channels, events.get_span()))
@@ -3027,6 +3028,13 @@ mod test {
                 vec![Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("cp")],
                 vec![Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("hh")]
             ]
+        );
+        assert!(Cycle::from("<[0, 1], 2>")?.generate().is_ok());
+        assert!(Cycle::from("[[0, 1], 2]")?.generate().is_ok());
+        assert!(
+            Cycle::from("[[0, 1], 2, [[3, 4], 5, 6, [7, 8]]], 9")?
+                .generate()
+                .is_ok()
         );
         Ok(())
     }
