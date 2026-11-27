@@ -1063,23 +1063,27 @@ impl Events {
     }
 
     /// Recursively collapses Multi and Poly Events into vectors of Single Events
-    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
-        if channels.len() == *channel {
+    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: usize) -> usize {
+        if channels.len() == channel {
             channels.push(vec![]);
         }
         match self {
-            Events::Single(s) => channels[*channel].push(s.clone()),
-            Events::Multi(m) => {
-                for e in &m.events {
-                    e.flatten(channels, channel);
-                }
+            Events::Single(s) => {
+                channels[channel].push(s.clone());
+                0
             }
+            Events::Multi(m) => m
+                .events
+                .iter()
+                .fold(0, |a, e| a + e.flatten(channels, channel)),
             Events::Poly(p) => {
-                for e in p.channels.iter() {
-                    e.flatten(channels, channel);
-                    *channel = channels.len()
-                }
-                *channel = channel.saturating_sub(p.channels.len())
+                channels.resize(channels.len().max(channel + p.channels.len()), vec![]);
+
+                p.channels
+                    .iter()
+                    .enumerate()
+                    .fold(0, |a, (i, e)| a + e.flatten(channels, channel + a + i))
+                    .saturating_add(p.channels.len().saturating_sub(1))
             }
         }
     }
@@ -1137,7 +1141,7 @@ impl Events {
 
     fn export(&self) -> Vec<Vec<Event>> {
         let mut channels = vec![];
-        self.flatten(&mut channels, &mut 0);
+        self.flatten(&mut channels, 0);
         Self::merge(&mut channels);
         channels.retain(|c| !c.is_empty());
 
@@ -1808,7 +1812,7 @@ impl Cycle {
         let mut events = Self::output(step, state, cycle, limit, true)?;
         events.transform_spans(&events.get_span());
         let mut channels = vec![];
-        events.flatten(&mut channels, &mut 0);
+        events.flatten(&mut channels, 0);
         Events::merge(&mut channels);
         Ok((channels, events.get_span()))
     }
@@ -3035,6 +3039,33 @@ mod test {
             Cycle::from("[[0, 1], 2, [[3, 4], 5, 6, [7, 8]]], 9")?
                 .generate()
                 .is_ok()
+        );
+        assert_eq!(
+            Cycle::from("[0, 1] ~")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ],
+                vec![Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(1),]
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[x, y, z] [~, ~, ~]")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("x"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("y"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("z"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ]
+            ]
         );
         Ok(())
     }
