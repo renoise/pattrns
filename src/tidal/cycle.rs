@@ -1064,6 +1064,9 @@ impl Events {
 
     /// Recursively collapses Multi and Poly Events into vectors of Single Events
     fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
+        if channels.len() == *channel {
+            channels.push(vec![]);
+        }
         match self {
             Events::Single(s) => channels[*channel].push(s.clone()),
             Events::Multi(m) => {
@@ -1072,14 +1075,11 @@ impl Events {
                 }
             }
             Events::Poly(p) => {
-                let last = p.channels.len().saturating_sub(1);
-                for (i, e) in p.channels.iter().enumerate() {
+                for e in p.channels.iter() {
                     e.flatten(channels, channel);
-                    if i != last {
-                        channels.push(vec![]);
-                        *channel += 1;
-                    }
+                    *channel = channels.len()
                 }
+                *channel = channel.saturating_sub(p.channels.len())
             }
         }
     }
@@ -1136,7 +1136,7 @@ impl Events {
     }
 
     fn export(&self) -> Vec<Vec<Event>> {
-        let mut channels = vec![vec![]];
+        let mut channels = vec![];
         self.flatten(&mut channels, &mut 0);
         Self::merge(&mut channels);
         channels.retain(|c| !c.is_empty());
@@ -1807,7 +1807,7 @@ impl Cycle {
     ) -> Result<(Vec<Vec<Event>>, Span), String> {
         let mut events = Self::output(step, state, cycle, limit, true)?;
         events.transform_spans(&events.get_span());
-        let mut channels = vec![vec![]];
+        let mut channels = vec![];
         events.flatten(&mut channels, &mut 0);
         Events::merge(&mut channels);
         Ok((channels, events.get_span()))
