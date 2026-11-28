@@ -250,21 +250,30 @@ impl<Step: GenericPatternTimeStep, Offset: GenericPatternTimeStep> GenericPatter
         self.step.to_samples(&self.time_base) * self.rhythm_event.step_time
     }
 
+    /// Return sample time of the given fraction within the current emitter event.
+    #[inline]
+    fn event_iter_item_time(&self, fraction: f64) -> SampleTime {
+        let step_time = self.current_steps_sample_duration();
+        let event_iter_time = self.sample_offset as f64 + self.emitter_next_sample_time;
+        // NB: round up instead of truncating to keep sample, beat timing in sync with Renoise
+        (event_iter_time + (step_time * fraction)).ceil() as SampleTime
+    }
+
     /// Return start sample time of the given emitter event start time.
     #[inline]
     fn event_iter_item_start_time(&self, start: &Fraction) -> SampleTime {
-        let step_time = self.current_steps_sample_duration();
-        let event_iter_time = self.sample_offset as f64 + self.emitter_next_sample_time;
-        let start = start.to_f64().unwrap_or(0.0);
-        (event_iter_time + (step_time * start)) as SampleTime
+        self.event_iter_item_time(start.to_f64().unwrap_or(0.0))
     }
 
-    /// Return duration in sample time of the given emitter event length.
+    /// Return duration in sample time of the given emitter event start and length.
     #[inline]
-    fn event_iter_item_duration(&self, length: &Fraction) -> SampleTime {
-        let step_time = self.current_steps_sample_duration();
+    fn event_iter_item_duration(&self, start: &Fraction, length: &Fraction) -> SampleTime {
+        let start = start.to_f64().unwrap_or(0.0);
         let length = length.to_f64().unwrap_or(1.0);
-        (step_time * length) as SampleTime
+        // Note: Derive duration from quantized start and end times, so that
+        // event durations always line up with the quantized event times.
+        self.event_iter_item_time(start + length)
+            .saturating_sub(self.event_iter_item_time(start))
     }
 
     /// Set a default instrument, if set, and apply event transform functions.
@@ -338,7 +347,7 @@ impl<Step: GenericPatternTimeStep, Offset: GenericPatternTimeStep> GenericPatter
                 return None;
             }
             let event = Some(event_item.event);
-            let duration = self.event_iter_item_duration(&event_item.length);
+            let duration = self.event_iter_item_duration(&event_item.start, &event_item.length);
             // advance to the next pulse in the next iteration when all events got consumed
             if self.events.is_empty() {
                 self.emitter_next_sample_time += self.current_steps_sample_duration();
@@ -354,7 +363,7 @@ impl<Step: GenericPatternTimeStep, Offset: GenericPatternTimeStep> GenericPatter
             let time = self.event_iter_item_start_time(&Fraction::ZERO);
             debug_assert!(time < sample_time, "Event should be due here");
             let event = None;
-            let duration = self.event_iter_item_duration(&Fraction::ONE);
+            let duration = self.event_iter_item_duration(&Fraction::ZERO, &Fraction::ONE);
             // advance to the next pulse in the next iteration
             self.emitter_next_sample_time += self.current_steps_sample_duration();
             // return event as rhythm iter item

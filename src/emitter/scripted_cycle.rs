@@ -134,7 +134,14 @@ impl ScriptedCycleEmitter {
             match self.cycle.generate() {
                 Ok(events) => events,
                 Err(err) => {
-                    add_lua_callback_error("cycle", &LuaError::RuntimeError(err));
+                    let source = self.cycle.source().clone();
+                    let source_line = None;
+                    add_lua_callback_error(
+                        source,
+                        source_line,
+                        "generate".to_string(),
+                        LuaError::RuntimeError(err),
+                    );
                     // skip processing events
                     return vec![];
                 }
@@ -170,7 +177,9 @@ impl ScriptedCycleEmitter {
                         if let Some(callback) = &self.mapping_callback {
                             callback.handle_error(&err)
                         } else {
-                            add_lua_callback_error("map", &err)
+                            let source = self.cycle.source().clone();
+                            let source_line = None;
+                            add_lua_callback_error(source, source_line, "map".to_string(), err);
                         }
                     }
                     Ok(note_events) => {
@@ -194,7 +203,7 @@ impl ScriptedCycleEmitter {
                 match self.cycle.generate() {
                     Ok(events) => events,
                     Err(err) => {
-                        add_lua_callback_error("cycle", &LuaError::RuntimeError(err));
+                        mapping_callback.handle_error(&LuaError::RuntimeError(err));
                         return;
                     }
                 }
@@ -225,12 +234,12 @@ impl ScriptedCycleEmitter {
                             channel_step,
                             step_length,
                         ) {
-                            add_lua_callback_error("cycle", &err);
+                            mapping_callback.handle_error(&err);
                             return;
                         }
                         // call mapping function
                         if let Err(err) = mapping_callback.call_with_arg(event.string()) {
-                            add_lua_callback_error("cycle", &err);
+                            mapping_callback.handle_error(&err);
                             return;
                         }
                     }

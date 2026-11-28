@@ -1,0 +1,38 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+	{
+		"label": "Build & Debug play",
+		"build": {
+			"command": "cargo",
+			"args": [
+				"build",
+				"--example",
+				"play",
+				"--features=player,fundsp,cpal-output"
+			]
+		},
+		"program": "$ZED_WORKTREE_ROOT/target/debug/examples/play",
+		"sourceLanguages": ["rust"],
+		"request": "launch",
+		"adapter": "CodeLLDB"
+	},
+	{
+		"label": "Build & Debug play-script",
+		"build": {
+			"command": "cargo",
+			"args": [
+				"build",
+				"--example",
+				"play-script",
+				"--features=scripting,player,cpal-output"
+			]
+		},
+		"program": "$ZED_WORKTREE_ROOT/target/debug/examples/play-script",
+		"sourceLanguages": ["rust"],
+		"request": "launch",
+		"adapter": "CodeLLDB"
+	}
+]

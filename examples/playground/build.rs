@@ -9,8 +9,7 @@ fn main() {
             println!("cargo::rustc-link-arg=-sASSERTIONS=2");
         }
         // compile options
-        println!("cargo::rustc-link-arg=-fexceptions");
-        println!("cargo::rustc-link-arg=-sNO_DISABLE_EXCEPTION_CATCHING");
+        println!("cargo::rustc-link-arg=-fwasm-exceptions");
         println!("cargo::rustc-link-arg=-sUSE_PTHREADS=1");
         println!("cargo::rustc-link-arg=-sPTHREAD_POOL_SIZE=4");
         // memory options

@@ -28,7 +28,7 @@ done
 
 # Emscripten pthread need atomics and bulk-memory features target features.
 # all other emscripten linker flags are specified in `build.rs`
-# `panic=abort` helps trimming down the generated code in size. With abort, 
+# `panic=abort` helps trimming down the generated code in size. With abort,
 # errors are actually also better traceable in debug builds...
 export RUSTFLAGS="-Ctarget-feature=+atomics,+bulk-memory -Cpanic=abort"
 
@@ -39,6 +39,17 @@ cargo +nightly -Z build-std=std,panic_abort \
 ## copy
 
 # Copy build artifacts to the web folder.
-for ext in wasm js data; do
-  cp "target/wasm32-unknown-emscripten/$TARGET_DIR/deps/playground.$ext" ./web
+# Note: Cargo copies the .js/.wasm artifacts to the profile dir, or "deps" in older versions.
+target_dir="target/wasm32-unknown-emscripten/$TARGET_DIR"
+out_dir="$(ls -td "$target_dir/build/playground"/*/out 2>/dev/null | sed -n '1p')" || true
+if [ -z "$out_dir" ]; then
+  echo "error: emscripten build output dir not found" >&2
+  exit 1
+fi
+
+for ext in wasm js; do
+  cp "$target_dir/playground.$ext" ./web 2>/dev/null ||
+  cp "$target_dir/deps/playground.$ext" ./web
 done
+
+cp "$out_dir/playground.data" ./web

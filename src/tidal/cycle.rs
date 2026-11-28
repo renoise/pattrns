@@ -26,6 +26,7 @@ pub struct Cycle {
     root: Step,
     event_limit: usize,
     input: String,
+    source: Option<String>,
     seed: Option<u64>,
     state: CycleState,
 }
@@ -55,10 +56,12 @@ impl Cycle {
                         rng: Xoshiro256PlusPlus::from_seed(rng().random()),
                     };
                     let seed = None;
+                    let source = None;
                     let event_limit = Self::EVENT_LIMIT_DEFAULT;
                     let cycle = Self {
                         input,
                         seed,
+                        source,
                         root,
                         state,
                         event_limit,
@@ -89,6 +92,18 @@ impl Cycle {
         }
     }
 
+    /// Rebuild/configure a newly created cycle with the given source hint.
+    pub fn with_source(self, source: &str) -> Self {
+        debug_assert!(
+            self.state.iteration == 0,
+            "Should not reconfigure seed of running cycle"
+        );
+        Self {
+            source: Some(source.to_string()),
+            ..self
+        }
+    }
+
     /// Rebuild/configure cycle to use the given custom event count limit.
     pub fn with_event_limit(self, event_limit: usize) -> Self {
         Self {
@@ -103,6 +118,12 @@ impl Cycle {
         self.input.contains(['<', '{', '|', '?', '/', '*'])
     }
 
+    /// When the cycle got created from a script source,
+    /// return source string indentifier (maybe a path), else None.
+    pub fn source(&self) -> &Option<String> {
+        &self.source
+    }
+
     /// Query for the next iteration of output.
     ///
     /// Returns error when the number of generated events exceed the configured event limit.
@@ -115,7 +136,24 @@ impl Cycle {
         let mut events = Self::output(&self.root, &mut self.state, cycle, self.event_limit, false)?;
         self.state.iteration += 1;
         events.transform_spans(&Span::default());
-        Ok(events.export())
+        let channels = events.as_flat_channels();
+
+        #[cfg(test)]
+        {
+            events.print(0);
+            println!("\nOUTPUT");
+            let channel_count = channels.len();
+            for (ci, channel) in channels.iter().enumerate() {
+                if channel_count > 1 {
+                    println!(" /{}", ci);
+                }
+                for (i, event) in channel.iter().enumerate() {
+                    println!("  │{:02}│ {}", i, event);
+                }
+            }
+        }
+
+        Ok(channels)
     }
 
     /// Move cycle iteration without generating any events.
@@ -1041,24 +1079,39 @@ impl Events {
         }
     }
 
+    fn as_flat_channels(&self) -> Vec<Vec<Event>> {
+        let mut channels = vec![vec![]];
+        self.flatten(&mut channels, 0);
+        channels.retain(|c| !c.is_empty());
+        Self::merge(&mut channels);
+        channels
+    }
+
     /// Recursively collapses Multi and Poly Events into vectors of Single Events
-    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: &mut usize) {
-        if channels.len() <= *channel {
-            channels.push(vec![])
-        }
+    fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: usize) -> usize {
         match self {
-            Events::Single(s) => channels[*channel].push(s.clone()),
-            Events::Multi(m) => {
-                for e in &m.events {
-                    e.flatten(channels, channel);
-                }
+            Events::Single(s) => {
+                channels[channel].push(s.clone());
+                0
             }
-            Events::Poly(p) => {
-                for e in &p.channels {
-                    e.flatten(channels, channel);
-                    *channel += 1
-                }
-            }
+            Events::Multi(m) => m
+                .events
+                .iter()
+                .map(|e| e.flatten(channels, channel))
+                .max()
+                .unwrap_or_default(),
+            Events::Poly(p) => p
+                .channels
+                .iter()
+                .enumerate()
+                .fold(0, |a, (i, e)| {
+                    let target = channel + a + i;
+                    if channels.len() == target {
+                        channels.push(vec![])
+                    }
+                    a + e.flatten(channels, target)
+                })
+                .saturating_add(p.channels.len().saturating_sub(1)),
         }
     }
 
@@ -1111,30 +1164,6 @@ impl Events {
         for events in channels {
             Self::merge_rests(events);
         }
-    }
-
-    fn export(&self) -> Vec<Vec<Event>> {
-        let mut channels = vec![];
-        self.flatten(&mut channels, &mut 0);
-        Self::merge(&mut channels);
-        channels.retain(|c| !c.is_empty());
-
-        #[cfg(test)]
-        {
-            self.print(0);
-            println!("\nOUTPUT");
-            let channel_count = channels.len();
-            for (ci, channel) in channels.iter().enumerate() {
-                if channel_count > 1 {
-                    println!(" /{}", ci);
-                }
-                for (i, event) in channel.iter().enumerate() {
-                    println!("  │{:02}│ {}", i, event);
-                }
-            }
-        }
-
-        channels
     }
 
     #[cfg(test)]
@@ -1785,10 +1814,7 @@ impl Cycle {
     ) -> Result<(Vec<Vec<Event>>, Span), String> {
         let mut events = Self::output(step, state, cycle, limit, true)?;
         events.transform_spans(&events.get_span());
-        let mut channels = vec![];
-        events.flatten(&mut channels, &mut 0);
-        Events::merge(&mut channels);
-        Ok((channels, events.get_span()))
+        Ok((events.as_flat_channels(), events.get_span()))
     }
 
     // generate events from Target expressions
@@ -1871,7 +1897,7 @@ impl Cycle {
             _ => {
                 // generate and flatten the events for the right side of the expression
                 let events = Self::output(right, state, cycle, limit, overlap)?;
-                let channels = events.export();
+                let channels = events.as_flat_channels();
 
                 // extract a float to use as mult from each event and output the step with it
                 let mut channel_events: Vec<Events> = Vec::with_capacity(channels.len());
@@ -2785,7 +2811,7 @@ mod test {
         )?;
 
         assert_eq!(
-            Cycle::from("a:1 b:v0.1:v1.0:p1.0")?.generate()?,
+            Cycle::from("a:1 b:v0.1:v1.0:p1.0:g100.0")?.generate()?,
             [[
                 Event::at(Fraction::from(0), Fraction::new(1, 2))
                     .with_note(9, 4)
@@ -2796,6 +2822,7 @@ mod test {
                         Target::Named("v".into(), Some(0.1)),
                         // second v should not be applied
                         Target::Named("p".into(), Some(1.0)),
+                        Target::Named("g".into(), Some(100.0)),
                     ])
             ]]
         );
@@ -3006,6 +3033,155 @@ mod test {
                 vec![Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("hh")]
             ]
         );
+        assert!(Cycle::from("<[0, 1], 2>")?.generate().is_ok());
+        assert!(Cycle::from("[[0, 1], 2]")?.generate().is_ok());
+        assert!(
+            Cycle::from("[[0, 1], 2, [[3, 4], 5, 6, [7, 8]]], 9")?
+                .generate()
+                .is_ok()
+        );
+        assert_eq!(
+            Cycle::from("[0, 1] ~")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ],
+                vec![Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(1),]
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, 1]*2, 3")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(0)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(1),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(1)
+                ],
+                vec![Event::at(Fraction::from(0), Fraction::new(1, 1)).with_int(3)]
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[x, y, z] [~, ~, ~]")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("x"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("y"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("z"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                ]
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, 1, 2]*2, [3:[~, 4]]*2, [5, 6*2] 5")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(0)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(1),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(1)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(2),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(2)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(3),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(3),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2))
+                        .with_int(3)
+                        .with_target(Target::Index(4)),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                        .with_int(3)
+                        .with_target(Target::Index(4)),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(5),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(5)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(6),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(6),
+                ],
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, ~, ~, 3] [0, 1, ~, ~] [0, 1, 2] [0, 1, 2, 3]")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(0),
+                ],
+                vec![
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(1),
+                ],
+                vec![
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(2),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(2),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(3),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(3),
+                ],
+            ]
+        );
+        assert_eq!(
+            Cycle::from("x*[~,0,1,2]")?.generate()?,
+            [
+                vec![Event::at(Fraction::from(0), Fraction::new(1, 1)).with_name("x"),],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("x"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("x"),
+                ],
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, 1] [[0 0 0 0, 1], 2] ~ [0, 1 1, 2:[~, 3]]")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(4, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(5, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(6, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(7, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(0),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(6, 8), Fraction::new(1, 8)).with_int(1),
+                    Event::at(Fraction::new(7, 8), Fraction::new(1, 8)).with_int(1),
+                ],
+                vec![
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(2),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(2),
+                ],
+                vec![
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                        .with_int(2)
+                        .with_target(Target::Index(3))
+                ],
+            ]
+        );
         Ok(())
     }
 
@@ -3145,6 +3321,12 @@ mod test {
             "[1 2 3 4]:v=[0.2 0.3 0.4 p.8]",
             "[1 2 3 4]:[v0.2 v0.3 v0.4 p.8]",
         )?;
+
+        assert_cycle_equality(
+            "[1 2 3 4]:g=[0.1 10.]",
+            "[1 2 3 4]:[g0.1 g10.]",
+        )?;
+
         Ok(())
     }
 }

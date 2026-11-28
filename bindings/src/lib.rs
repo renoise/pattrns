@@ -58,8 +58,8 @@ macro_rules! try_catch {
             // evaluate block
             let result = $block;
             // when the block caused a callback error, return the error
-            if let Some(lua_error) = pattrns::has_lua_callback_errors() {
-                $result_type::Error(new_raw_cstring(&lua_error.to_string()))
+            if let Some(callback_error) = pattrns::has_lua_callback_errors() {
+                $result_type::Error(new_raw_cstring(&callback_error.error.to_string()))
             } else {
                 // else return the block's return value
                 result
