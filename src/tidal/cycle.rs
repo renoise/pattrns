@@ -136,7 +136,24 @@ impl Cycle {
         let mut events = Self::output(&self.root, &mut self.state, cycle, self.event_limit, false)?;
         self.state.iteration += 1;
         events.transform_spans(&Span::default());
-        Ok(events.export())
+        let channels = events.as_flat_channels();
+
+        #[cfg(test)]
+        {
+            events.print(0);
+            println!("\nOUTPUT");
+            let channel_count = channels.len();
+            for (ci, channel) in channels.iter().enumerate() {
+                if channel_count > 1 {
+                    println!(" /{}", ci);
+                }
+                for (i, event) in channel.iter().enumerate() {
+                    println!("  │{:02}│ {}", i, event);
+                }
+            }
+        }
+
+        Ok(channels)
     }
 
     /// Move cycle iteration without generating any events.
@@ -1062,11 +1079,16 @@ impl Events {
         }
     }
 
+    fn as_flat_channels(&self) -> Vec<Vec<Event>> {
+        let mut channels = vec![vec![]];
+        self.flatten(&mut channels, 0);
+        channels.retain(|c| !c.is_empty());
+        Self::merge(&mut channels);
+        channels
+    }
+
     /// Recursively collapses Multi and Poly Events into vectors of Single Events
     fn flatten(&self, channels: &mut Vec<Vec<Event>>, channel: usize) -> usize {
-        if channels.len() == channel {
-            channels.push(vec![]);
-        }
         match self {
             Events::Single(s) => {
                 channels[channel].push(s.clone());
@@ -1075,16 +1097,21 @@ impl Events {
             Events::Multi(m) => m
                 .events
                 .iter()
-                .fold(0, |a, e| a + e.flatten(channels, channel)),
-            Events::Poly(p) => {
-                channels.resize(channels.len().max(channel + p.channels.len()), vec![]);
-
-                p.channels
-                    .iter()
-                    .enumerate()
-                    .fold(0, |a, (i, e)| a + e.flatten(channels, channel + a + i))
-                    .saturating_add(p.channels.len().saturating_sub(1))
-            }
+                .map(|e| e.flatten(channels, channel))
+                .max()
+                .unwrap_or_default(),
+            Events::Poly(p) => p
+                .channels
+                .iter()
+                .enumerate()
+                .fold(0, |a, (i, e)| {
+                    let target = channel + a + i;
+                    if channels.len() == target {
+                        channels.push(vec![])
+                    }
+                    a + e.flatten(channels, target)
+                })
+                .saturating_add(p.channels.len().saturating_sub(1)),
         }
     }
 
@@ -1137,30 +1164,6 @@ impl Events {
         for events in channels {
             Self::merge_rests(events);
         }
-    }
-
-    fn export(&self) -> Vec<Vec<Event>> {
-        let mut channels = vec![];
-        self.flatten(&mut channels, 0);
-        Self::merge(&mut channels);
-        channels.retain(|c| !c.is_empty());
-
-        #[cfg(test)]
-        {
-            self.print(0);
-            println!("\nOUTPUT");
-            let channel_count = channels.len();
-            for (ci, channel) in channels.iter().enumerate() {
-                if channel_count > 1 {
-                    println!(" /{}", ci);
-                }
-                for (i, event) in channel.iter().enumerate() {
-                    println!("  │{:02}│ {}", i, event);
-                }
-            }
-        }
-
-        channels
     }
 
     #[cfg(test)]
@@ -1811,10 +1814,7 @@ impl Cycle {
     ) -> Result<(Vec<Vec<Event>>, Span), String> {
         let mut events = Self::output(step, state, cycle, limit, true)?;
         events.transform_spans(&events.get_span());
-        let mut channels = vec![];
-        events.flatten(&mut channels, 0);
-        Events::merge(&mut channels);
-        Ok((channels, events.get_span()))
+        Ok((events.as_flat_channels(), events.get_span()))
     }
 
     // generate events from Target expressions
@@ -1897,7 +1897,7 @@ impl Cycle {
             _ => {
                 // generate and flatten the events for the right side of the expression
                 let events = Self::output(right, state, cycle, limit, overlap)?;
-                let channels = events.export();
+                let channels = events.as_flat_channels();
 
                 // extract a float to use as mult from each event and output the step with it
                 let mut channel_events: Vec<Events> = Vec::with_capacity(channels.len());
@@ -3051,6 +3051,20 @@ mod test {
             ]
         );
         assert_eq!(
+            Cycle::from("[0, 1]*2, 3")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(0)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(1),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(1)
+                ],
+                vec![Event::at(Fraction::from(0), Fraction::new(1, 1)).with_int(3)]
+            ]
+        );
+        assert_eq!(
             Cycle::from("[x, y, z] [~, ~, ~]")?.generate()?,
             [
                 vec![
@@ -3065,6 +3079,107 @@ mod test {
                     Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("z"),
                     Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
                 ]
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, 1, 2]*2, [3:[~, 4]]*2, [5, 6*2] 5")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(0),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(0)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(1),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(1)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(2),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(2)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(3),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(3),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2))
+                        .with_int(3)
+                        .with_target(Target::Index(4)),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2))
+                        .with_int(3)
+                        .with_target(Target::Index(4)),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_int(5),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_int(5)
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(6),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(6),
+                ],
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, ~, ~, 3] [0, 1, ~, ~] [0, 1, 2] [0, 1, 2, 3]")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(0),
+                ],
+                vec![
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(1),
+                ],
+                vec![
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)).with_int(2),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(2),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(3),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(3),
+                ],
+            ]
+        );
+        assert_eq!(
+            Cycle::from("x*[~,0,1,2]")?.generate()?,
+            [
+                vec![Event::at(Fraction::from(0), Fraction::new(1, 1)).with_name("x"),],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 2)).with_name("x"),
+                    Event::at(Fraction::new(1, 2), Fraction::new(1, 2)).with_name("x"),
+                ],
+            ]
+        );
+        assert_eq!(
+            Cycle::from("[0, 1] [[0 0 0 0, 1], 2] ~ [0, 1 1, 2:[~, 3]]")?.generate()?,
+            [
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(0),
+                    Event::at(Fraction::new(4, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(5, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(6, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(7, 16), Fraction::new(1, 16)).with_int(0),
+                    Event::at(Fraction::new(2, 4), Fraction::new(1, 4)),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(0),
+                ],
+                vec![
+                    Event::at(Fraction::from(0), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(1),
+                    Event::at(Fraction::new(6, 8), Fraction::new(1, 8)).with_int(1),
+                    Event::at(Fraction::new(7, 8), Fraction::new(1, 8)).with_int(1),
+                ],
+                vec![
+                    Event::at(Fraction::new(1, 4), Fraction::new(1, 4)).with_int(2),
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4)).with_int(2),
+                ],
+                vec![
+                    Event::at(Fraction::new(3, 4), Fraction::new(1, 4))
+                        .with_int(2)
+                        .with_target(Target::Index(3))
+                ],
             ]
         );
         Ok(())
